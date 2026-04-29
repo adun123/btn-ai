@@ -205,3 +205,22 @@ If `documentType` is wrong for Bale, the backend should return a 400 JSON error.
 ## Deployment note for demo
 
 If deployed on Netlify or Vercel, point it to this backend as a separate API service. Keep `CORS_ORIGIN` aligned with the frontend URL during demo deployment.
+
+## Vercel one-project multi-service note
+
+If you deploy this repo as **one Vercel project with multi-service**, use the root `vercel.json` mapping:
+
+- `frontend` service → `/`
+- `backend` service → `/backend`
+
+In that setup:
+
+- frontend should use `NEXT_PUBLIC_BACKEND_URL=/backend`
+- backend `CORS_ORIGIN` should point to the frontend origin, for example:
+  - `https://your-project.vercel.app`
+
+Expected backend URLs in that mode:
+
+- health: `/backend/health`
+- Swagger UI: `/backend/api-docs`
+- OpenAPI JSON: `/backend/openapi.json`
