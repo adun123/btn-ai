@@ -1,66 +1,63 @@
+@import "tailwindcss";
+
 :root {
-  --color-background: #f5f2eb;
-  --color-surface: rgba(255, 252, 246, 0.88);
-  --color-surface-strong: #fffdf9;
-  --color-text: #1f1c17;
-  --color-muted: #665f55;
-  --color-border: rgba(31, 28, 23, 0.12);
-  --color-accent: #7c4b2d;
-  --color-accent-soft: rgba(124, 75, 45, 0.12);
-  --color-success: #2c6a4b;
-  --color-danger: #8a3e33;
-  --space-1: 0.25rem;
-  --space-2: 0.5rem;
-  --space-3: 0.75rem;
-  --space-4: 1rem;
-  --space-5: 1.25rem;
-  --space-6: 1.5rem;
-  --space-8: 2rem;
-  --space-10: 2.5rem;
-  --space-12: 3rem;
-  --radius-sm: 0.5rem;
-  --radius-md: 1rem;
-  --radius-lg: 1.5rem;
-  --border-width: 1px;
-  --shadow-soft: 0 18px 48px rgba(58, 42, 30, 0.08);
-  --font-title: Georgia, 'Times New Roman', serif;
-  --font-body: 'Trebuchet MS', 'Segoe UI', sans-serif;
-  --text-xs: 0.75rem;
-  --text-sm: 0.875rem;
-  --text-base: 1rem;
-  --text-lg: 1.125rem;
-  --text-xl: 1.375rem;
-  --text-3xl: 2.5rem;
-  --line-tight: 1.1;
-  --line-copy: 1.6;
-  --container-max: 68rem;
-  --card-min-width: 18rem;
-  --transition-base: 180ms ease;
+  --background: #eef3ff;
+  --foreground: #0f1b3d;
+  --card: #ffffff;
+  --muted: #5f6f9b;
+  --border: #d8e1ff;
+  --primary: #1f3f8f;
+  --primary-soft: #e6eeff;
+}
+
+@media (prefers-color-scheme: dark) {
+  :root {
+    --background: #070d20;
+    --foreground: #d8e2ff;
+    --card: #0f1a36;
+    --muted: #9db2eb;
+    --border: #243866;
+    --primary: #79a5ff;
+    --primary-soft: #14264f;
+  }
 }
 
 * {
   box-sizing: border-box;
 }
 
-html {
-  background: var(--color-background);
+html,
+body {
+  margin: 0;
+  min-height: 100%;
 }
 
 body {
-  margin: 0;
-  min-height: 100vh;
   background:
-    radial-gradient(circle at top, rgba(124, 75, 45, 0.08), transparent 48%),
-    var(--color-background);
-  color: var(--color-text);
-  font-family: var(--font-body);
+    radial-gradient(circle at 10% 0%, rgba(62, 106, 201, 0.22), transparent 30%),
+    radial-gradient(circle at 90% 0%, rgba(31, 63, 143, 0.16), transparent 26%),
+    var(--background);
+  color: var(--foreground);
+  font-family: var(--font-inter), Arial, sans-serif;
 }
 
-a {
-  color: inherit;
-  text-decoration: none;
+.glass-card {
+  @apply rounded-2xl border shadow-sm backdrop-blur;
+  border-color: var(--border);
+  background-color: color-mix(in oklab, var(--card) 88%, transparent);
 }
 
-code {
-  font-family: 'Courier New', Courier, monospace;
+.input-base {
+  @apply w-full rounded-xl border px-4 py-3 text-sm shadow-sm outline-none transition focus:ring-2;
+  border-color: var(--border);
+  background-color: var(--card);
+  color: var(--foreground);
+}
+
+.input-base::placeholder {
+  color: var(--muted);
+}
+
+.text-muted {
+  color: var(--muted);
 }
