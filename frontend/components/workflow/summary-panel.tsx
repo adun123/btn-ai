@@ -9,6 +9,12 @@ type SummaryPanelProps = {
 };
 
 export function SummaryPanel({ caseId, channel, caseData, extraction, loading }: SummaryPanelProps) {
+  const uploadedDocumentsCount = (() => {
+    const evidence = caseData?.evidence || [];
+    if (channel !== 'bale') return evidence.length;
+    return new Set(evidence.map((item) => item.documentType)).size;
+  })();
+
   return (
     <aside className="glass-card p-5">
       <h3 className="text-sm font-semibold uppercase tracking-wide text-blue-800 dark:text-blue-300">Case Summary</h3>
@@ -27,7 +33,7 @@ export function SummaryPanel({ caseId, channel, caseData, extraction, loading }:
         </div>
         <div>
           <p className="text-slate-600 dark:text-slate-300">Uploaded documents</p>
-          <p className="font-medium text-slate-900 dark:text-slate-100">{caseData?.evidence.length || 0}</p>
+          <p className="font-medium text-slate-900 dark:text-slate-100">{uploadedDocumentsCount}</p>
         </div>
         <div>
           <p className="text-slate-600 dark:text-slate-300">Extraction fields</p>
