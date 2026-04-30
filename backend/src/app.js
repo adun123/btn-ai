@@ -23,6 +23,7 @@ app.use('/api-docs', swaggerUi.serve, swaggerUi.setup(openApiSpec, {
 app.get('/openapi.json', (req, res) => res.json(openApiSpec));
 
 app.use(healthRoutes);
+app.use('/api', healthRoutes);
 app.use('/api/cases', caseRoutes);
 app.use('/api/cases', locationRoutes);
 app.use('/api/cases', evidenceRoutes);
