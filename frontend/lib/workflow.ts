@@ -9,6 +9,6 @@ export const stepItems: Array<{ id: WorkflowStep; title: string }> = [
 ];
 
 export const docsByChannel: Record<Channel, string[]> = {
-  bale: ['ktp', 'kk', 'slip_gaji'],
+  bale: ['ktp', 'kk', 'npwp', 'slip_gaji', 'rekening_koran'],
   branch: ['application_form', 'supporting_document', 'salary_slip', 'other'],
 };

@@ -1,12 +1,14 @@
 import clsx from 'clsx';
 import { Camera, FileUp } from 'lucide-react';
-import { useMemo } from 'react';
+import { useEffect, useMemo, useState } from 'react';
+import { getDocumentLabel } from '../../../lib/document-labels';
 
 type UploadItem = {
   documentType: string;
   status: 'empty' | 'uploaded' | 'error' | 'uploading';
   notes: string;
   progress: number;
+  lastFile?: File;
   error?: string;
 };
 
@@ -24,6 +26,42 @@ function statusClass(status: UploadItem['status']) {
   if (status === 'error') return 'bg-red-100 text-red-700 dark:bg-red-950/50 dark:text-red-200';
   if (status === 'uploading') return 'bg-blue-100 text-blue-700 dark:bg-blue-900/40 dark:text-blue-200';
   return 'bg-slate-100 text-slate-600 dark:bg-slate-800 dark:text-slate-300';
+}
+
+function FilePreview({ file }: { file?: File }) {
+  const [previewUrl, setPreviewUrl] = useState<string>('');
+
+  useEffect(() => {
+    if (!file) {
+      setPreviewUrl('');
+      return;
+    }
+
+    const objectUrl = URL.createObjectURL(file);
+    setPreviewUrl(objectUrl);
+
+    return () => URL.revokeObjectURL(objectUrl);
+  }, [file]);
+
+  if (!file || !previewUrl) return null;
+
+  const isImage = file.type.startsWith('image/');
+  const isPdf = file.type === 'application/pdf';
+
+  return (
+    <div className="mt-3 rounded-xl border border-blue-100 bg-slate-50 p-3 dark:border-blue-900 dark:bg-slate-950/40">
+      <p className="mb-2 truncate text-xs font-medium text-slate-600 dark:text-slate-300">{file.name}</p>
+      {isImage ? (
+        <img src={previewUrl} alt={file.name} className="h-36 w-full rounded-lg object-cover" />
+      ) : isPdf ? (
+        <object data={previewUrl} type="application/pdf" className="h-44 w-full rounded-lg">
+          <p className="text-xs text-slate-600 dark:text-slate-300">Preview PDF tidak tersedia di browser ini.</p>
+        </object>
+      ) : (
+        <p className="text-xs text-slate-600 dark:text-slate-300">Preview tidak tersedia untuk tipe file ini.</p>
+      )}
+    </div>
+  );
 }
 
 export function UploadDocumentsStep({
@@ -73,7 +111,7 @@ export function UploadDocumentsStep({
                 <div className="rounded-lg bg-blue-50 p-2 dark:bg-blue-950/50">
                   <FileUp className="h-4 w-4 text-blue-700 dark:text-blue-300" />
                 </div>
-                <p className="text-sm font-semibold text-slate-900 dark:text-slate-100">{item.documentType}</p>
+                <p className="text-sm font-semibold text-slate-900 dark:text-slate-100">{getDocumentLabel(item.documentType)}</p>
               </div>
               <span className={clsx('rounded-full px-2 py-1 text-xs font-medium', statusClass(item.status))}>
                 {item.status}
@@ -118,6 +156,8 @@ export function UploadDocumentsStep({
               value={item.notes}
               onChange={(event) => onNoteChange(item.documentType, event.target.value)}
             />
+
+            <FilePreview file={item.lastFile} />
 
             {item.status === 'uploading' ? (
               <div className="mt-3">

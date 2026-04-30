@@ -18,6 +18,7 @@ export type CaseRecord = {
   channel: Channel;
   status: string;
   notes?: string;
+  manualExtractionEdits?: Record<string, string>;
   evidence: Array<{
     id: string;
     documentType: string;

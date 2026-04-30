@@ -7,9 +7,10 @@ type CreateCaseStepProps = {
   recentCases?: CaseRecord[];
   onSelectChannel: (channel: Channel) => void;
   onStart: () => void;
+  onOpenCase: (caseId: string) => void;
 };
 
-export function CreateCaseStep({ selectedChannel, loading, recentCases = [], onSelectChannel, onStart }: CreateCaseStepProps) {
+export function CreateCaseStep({ selectedChannel, loading, recentCases = [], onSelectChannel, onStart, onOpenCase }: CreateCaseStepProps) {
   return (
     <div className="space-y-5">
       <div>
@@ -60,9 +61,17 @@ export function CreateCaseStep({ selectedChannel, loading, recentCases = [], onS
           <p className="text-sm font-semibold text-slate-900 dark:text-slate-100">Recent Cases</p>
           <div className="mt-2 space-y-2 text-xs text-slate-600 dark:text-slate-300">
             {recentCases.slice(0, 5).map((item) => (
-              <p key={item.id} className="rounded-lg bg-slate-50 px-2 py-1 dark:bg-slate-800">
-                {item.id.slice(0, 8)}... - {item.channel} - {item.status}
-              </p>
+              <button
+                key={item.id}
+                type="button"
+                onClick={() => onOpenCase(item.id)}
+                className="flex w-full items-center justify-between rounded-lg bg-slate-50 px-2 py-1 text-left transition hover:bg-blue-50 dark:bg-slate-800 dark:hover:bg-slate-700"
+              >
+                <span>{item.id.slice(0, 8)}... - {item.channel}</span>
+                <span className="rounded-full bg-white px-2 py-0.5 text-[11px] font-medium capitalize text-slate-700 dark:bg-slate-900 dark:text-slate-200">
+                  {item.status.replaceAll('_', ' ')}
+                </span>
+              </button>
             ))}
           </div>
         </div>

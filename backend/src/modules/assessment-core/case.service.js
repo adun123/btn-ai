@@ -42,6 +42,13 @@ function patchCase(caseId, payload) {
   if (payload.notes !== undefined) record.notes = payload.notes;
   if (payload.applicant !== undefined) record.applicant = payload.applicant;
   if (payload.property !== undefined) record.property = payload.property;
+  if (payload.manualExtractionEdits !== undefined) {
+    if (payload.manualExtractionEdits && typeof payload.manualExtractionEdits === 'object' && !Array.isArray(payload.manualExtractionEdits)) {
+      record.manualExtractionEdits = payload.manualExtractionEdits;
+    } else {
+      throw createHttpError(400, 'manualExtractionEdits must be an object');
+    }
+  }
 
   appendAudit(record, 'case_updated', payload);
   return repository.saveCase(record);

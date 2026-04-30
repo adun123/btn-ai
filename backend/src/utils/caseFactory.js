@@ -23,6 +23,7 @@ function createAssessmentCase(payload = {}) {
     location: null,
     evidence: [],
     extraction: null,
+    manualExtractionEdits: {},
     auditTrail: [
       {
         action: 'case_created',

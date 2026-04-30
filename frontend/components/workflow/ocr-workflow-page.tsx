@@ -4,6 +4,7 @@ import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { useEffect, useMemo, useState } from 'react';
 import { Bot, CircleAlert, X } from 'lucide-react';
 import { apiClient, ApiError } from '../../lib/api';
+import { getDocumentLabel } from '../../lib/document-labels';
 import { docsByChannel } from '../../lib/workflow';
 import { useWorkflowStore } from '../../store/workflow-store';
 import type { ExtractionResult, WorkflowStep } from '../../types/ocr';
@@ -119,6 +120,17 @@ export function OcrWorkflowPage() {
     onError: (error) => setGlobalError(error instanceof ApiError ? error.message : 'Failed to save case notes'),
   });
 
+  const saveManualExtractionEdits = useMutation({
+    mutationFn: (edits: Record<string, string>) => apiClient.patchCase(caseId, { manualExtractionEdits: edits }),
+    onSuccess: (updatedCase) => {
+      queryClient.setQueryData(['case', caseId], updatedCase);
+      queryClient.invalidateQueries({ queryKey: ['case', caseId] });
+      queryClient.invalidateQueries({ queryKey: ['cases'] });
+      setGlobalError('');
+    },
+    onError: (error) => setGlobalError(error instanceof ApiError ? error.message : 'Failed to save manual edits'),
+  });
+
   useEffect(() => {
     setNotesDraft(caseQuery.data?.notes || '');
   }, [caseQuery.data?.notes]);
@@ -143,6 +155,32 @@ export function OcrWorkflowPage() {
     setNotesDraft('');
     queryClient.removeQueries({ queryKey: ['case'] });
     queryClient.removeQueries({ queryKey: ['evidence'] });
+  };
+
+  const inferStepFromCase = (record: { status?: string; extraction?: unknown; evidence?: unknown[] }): WorkflowStep => {
+    if (record.extraction) return 5;
+    const status = (record.status || '').toLowerCase();
+    if (status === 'extraction_completed') return 5;
+    if (status === 'evidence_uploaded') return 4;
+    if (status === 'location_saved') return 3;
+    if (status === 'case_created' || status === 'draft') return 2;
+    if (Array.isArray(record.evidence) && record.evidence.length > 0) return 4;
+    return 2;
+  };
+
+  const onOpenRecentCase = async (selectedCaseId: string) => {
+    try {
+      const selectedCase = await apiClient.getCase(selectedCaseId);
+      setCase({ caseId: selectedCase.id, channel: selectedCase.channel });
+      setStep(inferStepFromCase(selectedCase));
+      setGlobalError('');
+      setNotesDraft(selectedCase.notes || '');
+      setExtractionData(selectedCase.extraction || undefined);
+      queryClient.invalidateQueries({ queryKey: ['case', selectedCase.id] });
+      queryClient.invalidateQueries({ queryKey: ['evidence', selectedCase.id] });
+    } catch (error) {
+      setGlobalError(error instanceof ApiError ? error.message : 'Failed to open selected case');
+    }
   };
 
   const onUpload = async (documentType: string, file: File) => {
@@ -237,6 +275,7 @@ export function OcrWorkflowPage() {
         recentCases={casesQuery.data || []}
         onSelectChannel={onSelectChannel}
         onStart={() => createCase.mutate(channel)}
+        onOpenCase={(selectedCaseId) => void onOpenRecentCase(selectedCaseId)}
       />
     ),
     2: (
@@ -270,7 +309,15 @@ export function OcrWorkflowPage() {
         onStart={() => startExtraction.mutate()}
       />
     ),
-    5: <OcrResultStep extraction={extractionData || caseQuery.data?.extraction} loading={caseQuery.isLoading} />,
+    5: (
+      <OcrResultStep
+        extraction={extractionData || caseQuery.data?.extraction}
+        loading={caseQuery.isLoading}
+        persistedManualEdits={caseQuery.data?.manualExtractionEdits || {}}
+        savingManualEdits={saveManualExtractionEdits.isPending}
+        onSaveManualEdits={(edits) => saveManualExtractionEdits.mutate(edits)}
+      />
+    ),
   };
 
   return (
@@ -337,7 +384,7 @@ export function OcrWorkflowPage() {
             {issueItems.length > 0 ? (
               issueItems.map((item) => (
                 <p key={item.documentType} className="rounded-lg bg-red-50 px-2 py-1 text-red-700 dark:bg-red-950/40 dark:text-red-200">
-                  {item.documentType}: {item.error || 'Upload issue detected.'}
+                  {getDocumentLabel(item.documentType)}: {item.error || 'Upload issue detected.'}
                 </p>
               ))
             ) : (

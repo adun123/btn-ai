@@ -158,6 +158,11 @@ const options = {
             applicant: { type: 'object', additionalProperties: true },
             property: { type: 'object', additionalProperties: true },
             notes: { type: 'string' },
+            manualExtractionEdits: {
+              type: 'object',
+              additionalProperties: { type: 'string' },
+              description: 'Manual overrides for OCR extracted values keyed by field path token',
+            },
             location: {
               allOf: [{ $ref: '#/components/schemas/LocationPayload' }],
               nullable: true,
