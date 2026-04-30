@@ -1,14 +1,15 @@
 import clsx from 'clsx';
-import type { Channel } from '../../../types/ocr';
+import type { CaseRecord, Channel } from '../../../types/ocr';
 
 type CreateCaseStepProps = {
   selectedChannel: Channel;
   loading: boolean;
+  recentCases?: CaseRecord[];
   onSelectChannel: (channel: Channel) => void;
   onStart: () => void;
 };
 
-export function CreateCaseStep({ selectedChannel, loading, onSelectChannel, onStart }: CreateCaseStepProps) {
+export function CreateCaseStep({ selectedChannel, loading, recentCases = [], onSelectChannel, onStart }: CreateCaseStepProps) {
   return (
     <div className="space-y-5">
       <div>
@@ -53,6 +54,19 @@ export function CreateCaseStep({ selectedChannel, loading, onSelectChannel, onSt
       >
         {loading ? 'Starting case...' : 'Start Case'}
       </button>
+
+      {recentCases.length ? (
+        <div className="rounded-2xl border border-blue-100 bg-white p-4 dark:border-blue-900 dark:bg-slate-900">
+          <p className="text-sm font-semibold text-slate-900 dark:text-slate-100">Recent Cases</p>
+          <div className="mt-2 space-y-2 text-xs text-slate-600 dark:text-slate-300">
+            {recentCases.slice(0, 5).map((item) => (
+              <p key={item.id} className="rounded-lg bg-slate-50 px-2 py-1 dark:bg-slate-800">
+                {item.id.slice(0, 8)}... - {item.channel} - {item.status}
+              </p>
+            ))}
+          </div>
+        </div>
+      ) : null}
     </div>
   );
 }

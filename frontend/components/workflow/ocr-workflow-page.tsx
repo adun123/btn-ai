@@ -1,7 +1,7 @@
 'use client';
 
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
-import { useMemo, useState } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 import { Bot, CircleAlert, X } from 'lucide-react';
 import { apiClient, ApiError } from '../../lib/api';
 import { docsByChannel } from '../../lib/workflow';
@@ -25,12 +25,13 @@ type UploadState = {
 
 export function OcrWorkflowPage() {
   const queryClient = useQueryClient();
-  const { caseId, channel, currentStep, setCase, setStep } = useWorkflowStore();
+  const { caseId, channel, currentStep, setCase, setStep, reset } = useWorkflowStore();
   const [globalError, setGlobalError] = useState<string>('');
   const [assistantOpen, setAssistantOpen] = useState(false);
   const [rawAddressText, setRawAddressText] = useState('');
   const [extractionData, setExtractionData] = useState<ExtractionResult | undefined>(undefined);
   const [uploadMap, setUploadMap] = useState<Record<string, UploadState>>({});
+  const [notesDraft, setNotesDraft] = useState('');
   const allowedMimeTypes = ['image/jpeg', 'image/png', 'image/webp', 'application/pdf'];
 
   const docTypes = docsByChannel[channel];
@@ -50,14 +51,28 @@ export function OcrWorkflowPage() {
     enabled: Boolean(caseId),
   });
 
+  const casesQuery = useQuery({
+    queryKey: ['cases'],
+    queryFn: () => apiClient.getCases(),
+  });
+
+  const evidenceQuery = useQuery({
+    queryKey: ['evidence', caseId],
+    queryFn: () => apiClient.getEvidence(caseId),
+    enabled: Boolean(caseId),
+  });
+
   const createCase = useMutation({
     mutationFn: apiClient.createCase,
     onSuccess: (nextCase) => {
       setCase({ caseId: nextCase.id, channel: nextCase.channel });
       setStep(2);
       setGlobalError('');
+      setNotesDraft(nextCase.notes || '');
       queryClient.invalidateQueries({ queryKey: ['case', nextCase.id] });
+      queryClient.invalidateQueries({ queryKey: ['cases'] });
       setUploadMap({});
+      void apiClient.updateCaseStatus(nextCase.id, 'case_created');
     },
     onError: (error) => setGlobalError(error instanceof ApiError ? error.message : 'Failed to create case'),
   });
@@ -68,6 +83,7 @@ export function OcrWorkflowPage() {
       setStep(3);
       setGlobalError('');
       queryClient.invalidateQueries({ queryKey: ['case', caseId] });
+      void apiClient.updateCaseStatus(caseId, 'location_saved');
     },
     onError: (error) => setGlobalError(error instanceof ApiError ? error.message : 'Failed to save location'),
   });
@@ -82,6 +98,7 @@ export function OcrWorkflowPage() {
       setStep(5);
       setGlobalError('');
       queryClient.invalidateQueries({ queryKey: ['case', caseId] });
+      void apiClient.updateCaseStatus(caseId, 'extraction_completed');
     },
     onError: (error) => {
       if (error instanceof ApiError && error.status === 503) {
@@ -91,6 +108,42 @@ export function OcrWorkflowPage() {
       setGlobalError(error instanceof ApiError ? error.message : 'Failed to process OCR');
     },
   });
+
+  const saveCaseNotes = useMutation({
+    mutationFn: (notes: string) => apiClient.patchCase(caseId, { notes }),
+    onSuccess: (updatedCase) => {
+      setNotesDraft(updatedCase.notes || '');
+      queryClient.invalidateQueries({ queryKey: ['case', caseId] });
+      queryClient.invalidateQueries({ queryKey: ['cases'] });
+    },
+    onError: (error) => setGlobalError(error instanceof ApiError ? error.message : 'Failed to save case notes'),
+  });
+
+  useEffect(() => {
+    setNotesDraft(caseQuery.data?.notes || '');
+  }, [caseQuery.data?.notes]);
+
+  const onSelectChannel = (selected: typeof channel) => {
+    // Channel switch should always start a fresh case flow.
+    setCase({ caseId: '', channel: selected });
+    setStep(1);
+    setGlobalError('');
+    setRawAddressText('');
+    setExtractionData(undefined);
+    setUploadMap({});
+    setNotesDraft('');
+  };
+
+  const onStartNewFlow = () => {
+    reset();
+    setGlobalError('');
+    setRawAddressText('');
+    setExtractionData(undefined);
+    setUploadMap({});
+    setNotesDraft('');
+    queryClient.removeQueries({ queryKey: ['case'] });
+    queryClient.removeQueries({ queryKey: ['evidence'] });
+  };
 
   const onUpload = async (documentType: string, file: File) => {
     if (file.size > 10 * 1024 * 1024) {
@@ -142,6 +195,8 @@ export function OcrWorkflowPage() {
       }));
       setGlobalError('');
       queryClient.invalidateQueries({ queryKey: ['case', caseId] });
+      queryClient.invalidateQueries({ queryKey: ['evidence', caseId] });
+      void apiClient.updateCaseStatus(caseId, 'evidence_uploaded');
     } catch (error) {
       setUploadMap((prev) => ({
         ...prev,
@@ -168,7 +223,7 @@ export function OcrWorkflowPage() {
   const canAdvanceToOcr = uploadedCount > 0;
   const canGoBack = currentStep > 1;
   const uploadedDocumentsForOcr = (() => {
-    const evidence = caseQuery.data?.evidence || [];
+    const evidence = evidenceQuery.data || caseQuery.data?.evidence || [];
     if (!evidence.length) return uploadedCount;
     if (channel !== 'bale') return evidence.length;
     return new Set(evidence.map((item) => item.documentType)).size;
@@ -179,7 +234,8 @@ export function OcrWorkflowPage() {
       <CreateCaseStep
         selectedChannel={channel}
         loading={createCase.isPending}
-        onSelectChannel={(selected) => setCase({ caseId, channel: selected })}
+        recentCases={casesQuery.data || []}
+        onSelectChannel={onSelectChannel}
         onStart={() => createCase.mutate(channel)}
       />
     ),
@@ -227,6 +283,13 @@ export function OcrWorkflowPage() {
         <p className="text-xs font-semibold uppercase tracking-wider text-blue-700 dark:text-blue-300">OCR KPR Submission</p>
         <h1 className="text-2xl font-semibold text-slate-900 dark:text-slate-100 sm:text-3xl">Modern case-based workflow</h1>
         {/* <p className="text-sm text-slate-600 dark:text-slate-300">Connected to <span className="font-medium">{apiClient.backendUrl}</span></p> */}
+        <button
+          type="button"
+          onClick={onStartNewFlow}
+          className="mt-2 rounded-lg border border-blue-200 bg-white px-3 py-1.5 text-xs font-semibold text-blue-900 transition hover:bg-blue-50 dark:border-blue-900 dark:bg-slate-900 dark:text-blue-200 dark:hover:bg-slate-800"
+        >
+          Restart from beginning
+        </button>
       </header>
 
       <Stepper currentStep={currentStep} />
@@ -256,6 +319,10 @@ export function OcrWorkflowPage() {
           caseData={caseQuery.data}
           extraction={extractionData || caseQuery.data?.extraction}
           loading={caseQuery.isLoading}
+          notesDraft={notesDraft}
+          notesSaving={saveCaseNotes.isPending}
+          onNotesChange={setNotesDraft}
+          onSaveNotes={() => saveCaseNotes.mutate(notesDraft)}
         />
       </section>
       {currentStep === 3 && assistantOpen ? (

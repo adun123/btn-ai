@@ -17,6 +17,7 @@ export type CaseRecord = {
   id: string;
   channel: Channel;
   status: string;
+  notes?: string;
   evidence: Array<{
     id: string;
     documentType: string;
@@ -29,6 +30,8 @@ export type CaseRecord = {
   extraction?: ExtractionResult;
   updatedAt: string;
 };
+
+export type EvidenceItem = CaseRecord['evidence'][number];
 
 export type ExtractionField = {
   key: string;

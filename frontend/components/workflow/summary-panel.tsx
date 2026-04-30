@@ -6,9 +6,23 @@ type SummaryPanelProps = {
   caseData?: CaseRecord;
   extraction?: ExtractionResult;
   loading: boolean;
+  notesDraft: string;
+  notesSaving: boolean;
+  onNotesChange: (value: string) => void;
+  onSaveNotes: () => void;
 };
 
-export function SummaryPanel({ caseId, channel, caseData, extraction, loading }: SummaryPanelProps) {
+export function SummaryPanel({
+  caseId,
+  channel,
+  caseData,
+  extraction,
+  loading,
+  notesDraft,
+  notesSaving,
+  onNotesChange,
+  onSaveNotes,
+}: SummaryPanelProps) {
   const uploadedDocumentsCount = (() => {
     const evidence = caseData?.evidence || [];
     if (channel !== 'bale') return evidence.length;
@@ -45,6 +59,25 @@ export function SummaryPanel({ caseId, channel, caseData, extraction, loading }:
           <p className="text-slate-600 dark:text-slate-300">Extraction fields</p>
           <p className="font-medium text-slate-900 dark:text-slate-100">{extractionFieldsCount}</p>
         </div>
+        {caseId ? (
+          <div>
+            <p className="text-slate-600 dark:text-slate-300">Case notes</p>
+            <textarea
+              className="input-base mt-2 min-h-20 py-2 text-xs"
+              placeholder="Add internal note for this case"
+              value={notesDraft}
+              onChange={(event) => onNotesChange(event.target.value)}
+            />
+            <button
+              type="button"
+              onClick={onSaveNotes}
+              disabled={notesSaving}
+              className="mt-2 rounded-lg bg-blue-900 px-3 py-2 text-xs font-semibold text-white disabled:opacity-60 dark:bg-blue-600"
+            >
+              {notesSaving ? 'Saving...' : 'Save notes'}
+            </button>
+          </div>
+        ) : null}
       </div>
       {loading ? <div className="mt-5 h-2 animate-pulse rounded-full bg-blue-100 dark:bg-blue-950/50" /> : null}
     </aside>

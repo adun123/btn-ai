@@ -1,4 +1,4 @@
-import type { ApiEnvelope, ApiErrorShape, CaseRecord, Channel, ExtractionResult } from '../types/ocr';
+import type { ApiEnvelope, ApiErrorShape, CaseRecord, Channel, EvidenceItem, ExtractionResult } from '../types/ocr';
 
 const defaultBackendUrl = 'http://localhost:4000';
 
@@ -137,6 +137,8 @@ export const apiClient = {
       method: 'POST',
     }),
   getExtraction: (caseId: string) => request<ExtractionResult>(`/cases/${encodeURIComponent(caseId)}/extraction`),
+  getCases: () => request<CaseRecord[]>('/cases'),
+  getEvidence: (caseId: string) => request<EvidenceItem[]>(`/cases/${encodeURIComponent(caseId)}/evidence`),
   getCase: (caseId: string) => request<CaseRecord>(`/cases/${encodeURIComponent(caseId)}`),
   patchCase: (caseId: string, payload: Record<string, unknown>) =>
     request<CaseRecord>(`/cases/${encodeURIComponent(caseId)}`, {
