@@ -42,7 +42,7 @@ async function request<T>(path: string, init?: RequestInit): Promise<T> {
 export const apiClient = {
   backendUrl,
   createCase: (channel: Channel) =>
-    request<CaseRecord>('/cases', {
+    request<CaseRecord>('/api/cases', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({
@@ -52,7 +52,7 @@ export const apiClient = {
       }),
     }),
   saveLocation: (caseId: string, rawAddressText: string) =>
-    request<CaseRecord>(`/cases/${encodeURIComponent(caseId)}/location`, {
+    request<CaseRecord>(`/api/cases/${encodeURIComponent(caseId)}/location`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ rawAddressText }),
@@ -79,7 +79,7 @@ export const apiClient = {
       }
 
       const xhr = new XMLHttpRequest();
-      xhr.open('POST', `${backendUrl}/cases/${encodeURIComponent(caseId)}/evidence`);
+      xhr.open('POST', `${backendUrl}/api/cases/${encodeURIComponent(caseId)}/evidence`);
       xhr.responseType = 'json';
 
       xhr.upload.onprogress = (event) => {
@@ -104,19 +104,19 @@ export const apiClient = {
       xhr.send(formData);
     }),
   startExtraction: (caseId: string) =>
-    request<ExtractionResult>(`/cases/${encodeURIComponent(caseId)}/extraction/start`, {
+    request<ExtractionResult>(`/api/cases/${encodeURIComponent(caseId)}/extraction/start`, {
       method: 'POST',
     }),
-  getExtraction: (caseId: string) => request<ExtractionResult>(`/cases/${encodeURIComponent(caseId)}/extraction`),
-  getCase: (caseId: string) => request<CaseRecord>(`/cases/${encodeURIComponent(caseId)}`),
+  getExtraction: (caseId: string) => request<ExtractionResult>(`/api/cases/${encodeURIComponent(caseId)}/extraction`),
+  getCase: (caseId: string) => request<CaseRecord>(`/api/cases/${encodeURIComponent(caseId)}`),
   patchCase: (caseId: string, payload: Record<string, unknown>) =>
-    request<CaseRecord>(`/cases/${encodeURIComponent(caseId)}`, {
+    request<CaseRecord>(`/api/cases/${encodeURIComponent(caseId)}`, {
       method: 'PATCH',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify(payload),
     }),
   updateCaseStatus: (caseId: string, status: string) =>
-    request<CaseRecord>(`/cases/${encodeURIComponent(caseId)}/status`, {
+    request<CaseRecord>(`/api/cases/${encodeURIComponent(caseId)}/status`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ status }),
