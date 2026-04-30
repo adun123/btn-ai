@@ -230,7 +230,20 @@ export function OcrWorkflowPage() {
       ) : null}
 
       <section className="grid gap-5 lg:grid-cols-[1.35fr_0.65fr]">
-        <div className="glass-card min-h-[440px] p-5 transition-all duration-300">{stepView[currentStep]}</div>
+        <div className="glass-card min-h-[440px] p-5 transition-all duration-300">
+          {canGoBack ? (
+            <div className="mb-4 hidden lg:flex">
+              <button
+                type="button"
+                onClick={() => setStep((currentStep - 1) as WorkflowStep)}
+                className="inline-flex items-center rounded-xl border border-blue-200 bg-white px-4 py-2 text-sm font-semibold text-blue-900 transition hover:bg-blue-50 dark:border-blue-900 dark:bg-slate-900 dark:text-blue-200 dark:hover:bg-slate-800"
+              >
+                Back
+              </button>
+            </div>
+          ) : null}
+          {stepView[currentStep]}
+        </div>
         <SummaryPanel
           caseId={caseId}
           channel={channel}
@@ -269,14 +282,6 @@ export function OcrWorkflowPage() {
       ) : null}
 
       <div className="hidden items-center gap-3 lg:flex">
-        <button
-          type="button"
-          onClick={() => canGoBack && setStep((currentStep - 1) as WorkflowStep)}
-          disabled={!canGoBack}
-          className="rounded-xl border border-blue-200 bg-white px-5 py-3 text-sm font-semibold text-blue-900 disabled:cursor-not-allowed disabled:opacity-40 dark:border-blue-900 dark:bg-slate-900 dark:text-blue-200"
-        >
-          Back
-        </button>
         {currentStep === 3 ? (
           <button
             type="button"

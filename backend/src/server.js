@@ -1,6 +1,6 @@
 require('dotenv').config();
 
-const { app } = require('./app');
+const app = require('./app'); // ✅ TANPA {}
 
 const PORT = Number(process.env.PORT || 4000);
 
