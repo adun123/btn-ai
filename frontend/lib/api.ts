@@ -1,7 +1,36 @@
 import type { ApiEnvelope, ApiErrorShape, CaseRecord, Channel, ExtractionResult } from '../types/ocr';
 
 const defaultBackendUrl = 'http://localhost:4000';
-const backendUrl = process.env.NEXT_PUBLIC_BACKEND_URL?.trim() || defaultBackendUrl;
+
+function normalizeBackendUrl(rawUrl: string): string {
+  let normalized = rawUrl.trim();
+  if (!normalized) {
+    normalized = defaultBackendUrl;
+  }
+
+  normalized = normalized.replace(/\/+$/, '');
+
+  // Avoid duplicated /api when callers also prepend /api in paths.
+  if (normalized.endsWith('/api')) {
+    normalized = normalized.slice(0, -4);
+  }
+
+  return normalized;
+}
+
+function ensureApiPath(path: string): string {
+  const normalizedPath = `/${path.trim().replace(/^\/+/, '')}`;
+  if (normalizedPath === '/api' || normalizedPath.startsWith('/api/')) {
+    return normalizedPath;
+  }
+  return `/api${normalizedPath}`;
+}
+
+function buildApiUrl(path: string): string {
+  return `${backendUrl}${ensureApiPath(path)}`;
+}
+
+const backendUrl = normalizeBackendUrl(process.env.NEXT_PUBLIC_BACKEND_URL || defaultBackendUrl);
 
 export class ApiError extends Error {
   status: number;
@@ -24,7 +53,7 @@ async function parseResponse<T>(response: Response): Promise<T> {
 }
 
 async function request<T>(path: string, init?: RequestInit): Promise<T> {
-  const response = await fetch(`${backendUrl}${path}`, {
+  const response = await fetch(buildApiUrl(path), {
     ...init,
     cache: 'no-store',
   });
@@ -42,7 +71,7 @@ async function request<T>(path: string, init?: RequestInit): Promise<T> {
 export const apiClient = {
   backendUrl,
   createCase: (channel: Channel) =>
-    request<CaseRecord>('/api/cases', {
+    request<CaseRecord>('/cases', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({
@@ -52,7 +81,7 @@ export const apiClient = {
       }),
     }),
   saveLocation: (caseId: string, rawAddressText: string) =>
-    request<CaseRecord>(`/api/cases/${encodeURIComponent(caseId)}/location`, {
+    request<CaseRecord>(`/cases/${encodeURIComponent(caseId)}/location`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ rawAddressText }),
@@ -79,7 +108,7 @@ export const apiClient = {
       }
 
       const xhr = new XMLHttpRequest();
-      xhr.open('POST', `${backendUrl}/api/cases/${encodeURIComponent(caseId)}/evidence`);
+      xhr.open('POST', buildApiUrl(`/cases/${encodeURIComponent(caseId)}/evidence`));
       xhr.responseType = 'json';
 
       xhr.upload.onprogress = (event) => {
@@ -104,19 +133,19 @@ export const apiClient = {
       xhr.send(formData);
     }),
   startExtraction: (caseId: string) =>
-    request<ExtractionResult>(`/api/cases/${encodeURIComponent(caseId)}/extraction/start`, {
+    request<ExtractionResult>(`/cases/${encodeURIComponent(caseId)}/extraction/start`, {
       method: 'POST',
     }),
-  getExtraction: (caseId: string) => request<ExtractionResult>(`/api/cases/${encodeURIComponent(caseId)}/extraction`),
-  getCase: (caseId: string) => request<CaseRecord>(`/api/cases/${encodeURIComponent(caseId)}`),
+  getExtraction: (caseId: string) => request<ExtractionResult>(`/cases/${encodeURIComponent(caseId)}/extraction`),
+  getCase: (caseId: string) => request<CaseRecord>(`/cases/${encodeURIComponent(caseId)}`),
   patchCase: (caseId: string, payload: Record<string, unknown>) =>
-    request<CaseRecord>(`/api/cases/${encodeURIComponent(caseId)}`, {
+    request<CaseRecord>(`/cases/${encodeURIComponent(caseId)}`, {
       method: 'PATCH',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify(payload),
     }),
   updateCaseStatus: (caseId: string, status: string) =>
-    request<CaseRecord>(`/api/cases/${encodeURIComponent(caseId)}/status`, {
+    request<CaseRecord>(`/cases/${encodeURIComponent(caseId)}/status`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ status }),

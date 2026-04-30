@@ -31,7 +31,8 @@ export function BackendStatus({ backendUrl, onPhaseChange }: BackendStatusProps)
 
     const run = async () => {
       try {
-        const response = await fetch(`${backendUrl}/health`, {
+        const normalizedBase = backendUrl.trim().replace(/\/+$/, '').replace(/\/api$/, '');
+        const response = await fetch(`${normalizedBase}/api/health`, {
           cache: 'no-store',
           signal: controller.signal,
         });
@@ -98,7 +99,7 @@ export function BackendStatus({ backendUrl, onPhaseChange }: BackendStatusProps)
         </dl>
       ) : null}
 
-      <p className={styles.note}>Checks <code className={styles.inlineCode}>{backendUrl}/health</code> after the page loads.</p>
+      <p className={styles.note}>Checks <code className={styles.inlineCode}>{backendUrl.replace(/\/+$/, '').replace(/\/api$/, '')}/api/health</code> after the page loads.</p>
     </article>
   );
 }
