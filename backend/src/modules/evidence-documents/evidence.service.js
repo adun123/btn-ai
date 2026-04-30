@@ -6,7 +6,7 @@ const { createHttpError } = require('../../utils/httpError');
 const caseService = require('../assessment-core/case.service');
 
 const branchDocumentTypes = new Set(['application_form', 'supporting_document', 'salary_slip', 'other']);
-const baleDocumentTypes = new Set(['ktp', 'kk', 'slip_gaji']);
+const baleDocumentTypes = new Set(['ktp', 'kk', 'slip_gaji', 'npwp', 'rekening_koran']);
 
 const upload = multer({
   storage: multer.memoryStorage(),
@@ -70,7 +70,7 @@ function normalizeDocumentType(value) {
 
 function validateDocumentType(channel, documentType) {
   if (channel === 'bale' && !baleDocumentTypes.has(documentType)) {
-    throw createHttpError(400, 'For bale channel, documentType must be one of: ktp, kk, slip_gaji', {
+    throw createHttpError(400, 'For bale channel, documentType must be one of: ktp, kk, slip_gaji, npwp, rekening_koran', {
       allowed: Array.from(baleDocumentTypes),
     });
   }

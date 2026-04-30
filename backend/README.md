@@ -3,7 +3,7 @@
 Backend-first Express API for a house/KPR assessment flow with two intake channels:
 
 - `branch`: branch / bank-assisted submission with BTN-style block form OCR orchestration
-- `bale`: lighter mobile/digital submission flow for KTP, KK, and slip gaji
+- `bale`: lighter mobile/digital submission flow for KTP, KK, slip gaji, NPWP, and rekening koran
 
 ## Current scope
 
@@ -13,7 +13,7 @@ That means:
 
 - data is lost when the server restarts
 - uploaded file content is stored in memory for the current process only
-- `bale` extraction now calls Gemini OCR for `ktp`, `kk`, and `slip_gaji`
+- `bale` extraction now calls Gemini OCR for `ktp`, `kk`, `slip_gaji`, `npwp`, and `rekening_koran`
 - `branch` extraction remains a placeholder/orchestration entry for future BTN block form OCR
 - default demo model is `gemini-3-flash-preview` unless `GEMINI_MODEL` is overridden
 
@@ -53,7 +53,7 @@ Think of it as the **folder ID** for a single application.
 Once a case is created, everything else is attached to that same case:
 
 - property location
-- uploaded KTP / KK / slip gaji
+- uploaded KTP / KK / slip gaji / NPWP / rekening koran
 - OCR results
 - later: valuation, review, and report output
 
@@ -78,6 +78,8 @@ Without `caseId`, the backend would not know which uploaded files and OCR result
 - `ktp`
 - `kk`
 - `slip_gaji`
+- `npwp`
+- `rekening_koran`
 
 The extraction response returns:
 
@@ -86,6 +88,8 @@ The extraction response returns:
 - confidence and review flags per field
 
 If `GEMINI_API_KEY` is missing, Bale extraction returns an error instead of a mocked OCR result.
+
+If the uploaded Bale `documentType` does not match the document type Gemini detects from the visible file content, extraction is rejected with a 400 error. For example, uploading a rekening koran while labeling it as `ktp` will not be accepted.
 
 ## Development test flow
 
@@ -128,6 +132,8 @@ npm start
   - `ktp`
   - `kk`
   - `slip_gaji`
+  - `npwp`
+  - `rekening_koran`
 
 6. Start OCR:
 
@@ -153,7 +159,7 @@ curl -X POST http://localhost:4000/cases \
 
 Save the returned `data.id`.
 
-#### 2. Upload KTP / KK / slip gaji
+#### 2. Upload KTP / KK / slip gaji / NPWP / rekening koran
 
 ```bash
 curl -X POST http://localhost:4000/cases/<caseId>/evidence \
@@ -192,7 +198,7 @@ If Gemini is overloaded, the backend should now return a clean JSON error like:
 }
 ```
 
-If `documentType` is wrong for Bale, the backend should return a 400 JSON error.
+If `documentType` is wrong for Bale, or the visible uploaded document does not match the selected Bale `documentType`, the backend should return a 400 JSON error.
 
 ## Suggested verification flow
 
@@ -205,22 +211,3 @@ If `documentType` is wrong for Bale, the backend should return a 400 JSON error.
 ## Deployment note for demo
 
 If deployed on Netlify or Vercel, point it to this backend as a separate API service. Keep `CORS_ORIGIN` aligned with the frontend URL during demo deployment.
-
-## Vercel one-project multi-service note
-
-If you deploy this repo as **one Vercel project with multi-service**, use the root `vercel.json` mapping:
-
-- `frontend` service → `/`
-- `backend` service → `/backend`
-
-In that setup:
-
-- frontend should use `NEXT_PUBLIC_BACKEND_URL=/backend`
-- backend `CORS_ORIGIN` should point to the frontend origin, for example:
-  - `https://your-project.vercel.app`
-
-Expected backend URLs in that mode:
-
-- health: `/backend/health`
-- Swagger UI: `/backend/api-docs`
-- OpenAPI JSON: `/backend/openapi.json`

@@ -25,6 +25,31 @@ const options = {
             details: { type: 'object', nullable: true },
           },
         },
+        DocumentTypeMismatchDetails: {
+          type: 'object',
+          properties: {
+            code: { type: 'string', example: 'DOCUMENT_TYPE_MISMATCH' },
+            channel: { type: 'string', example: 'bale' },
+            expected: { type: 'string', example: 'ktp' },
+            detected: { type: 'string', example: 'rekening_koran' },
+            evidenceId: { type: 'string', format: 'uuid' },
+            filename: { type: 'string', example: 'rekening.txt' },
+          },
+        },
+        DocumentTypeMismatchErrorResponse: {
+          type: 'object',
+          properties: {
+            success: { type: 'boolean', example: false },
+            error: {
+              type: 'string',
+              example: 'Uploaded documentType "ktp" does not match the detected document type "rekening_koran". Bale extraction rejected.',
+            },
+            details: {
+              allOf: [{ $ref: '#/components/schemas/DocumentTypeMismatchDetails' }],
+              nullable: true,
+            },
+          },
+        },
         CreateCasePayload: {
           type: 'object',
           required: ['channel'],
@@ -56,7 +81,7 @@ const options = {
           type: 'object',
           properties: {
             id: { type: 'string', format: 'uuid' },
-            documentType: { type: 'string', example: 'ktp' },
+            documentType: { type: 'string', example: 'npwp', description: 'For bale: ktp, kk, slip_gaji, npwp, rekening_koran. For branch: application_form, supporting_document, salary_slip, other.' },
             filename: { type: 'string' },
             mimetype: { type: 'string' },
             size: { type: 'number' },

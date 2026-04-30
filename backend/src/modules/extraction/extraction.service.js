@@ -3,6 +3,7 @@ const { nowIso } = require('../../utils/caseFactory');
 const { createHttpError } = require('../../utils/httpError');
 const caseService = require('../assessment-core/case.service');
 const { extractDocument } = require('../provider-gateway/gemini-ocr.service');
+const { normalizeDocumentType } = require('../evidence-documents/evidence.service');
 
 function buildBranchExtraction() {
   return {
@@ -25,11 +26,11 @@ function buildBranchExtraction() {
 }
 
 async function buildBaleExtraction(record) {
-  const allowedTypes = new Set(['ktp', 'kk', 'slip_gaji']);
+  const allowedTypes = new Set(['ktp', 'kk', 'slip_gaji', 'npwp', 'rekening_koran']);
   const targetEvidence = record.evidence.filter((item) => allowedTypes.has(item.documentType));
 
   if (!targetEvidence.length) {
-    throw createHttpError(400, 'Bale extraction requires at least one of: ktp, kk, slip_gaji');
+    throw createHttpError(400, 'Bale extraction requires at least one of: ktp, kk, slip_gaji, npwp, rekening_koran');
   }
 
   const documents = await Promise.all(targetEvidence.map(async (item) => {
@@ -44,10 +45,26 @@ async function buildBaleExtraction(record) {
       base64Data: payload.base64Data,
     });
 
+    const detectedDocumentType = normalizeDocumentType(extracted.documentType);
+    if (detectedDocumentType !== item.documentType) {
+      throw createHttpError(
+        400,
+        `Uploaded documentType "${item.documentType}" does not match the detected document type "${detectedDocumentType}". Bale extraction rejected.`,
+        {
+          code: 'DOCUMENT_TYPE_MISMATCH',
+          channel: 'bale',
+          expected: item.documentType,
+          detected: detectedDocumentType,
+          evidenceId: item.id,
+          filename: item.filename,
+        },
+      );
+    }
+
     return {
       evidenceId: item.id,
       filename: item.filename,
-      documentType: extracted.documentType,
+      documentType: detectedDocumentType,
       confidence: extracted.confidence,
       summary: extracted.summary,
       fields: extracted.fields,
@@ -68,7 +85,7 @@ async function buildBaleExtraction(record) {
     status: 'completed',
     pipeline: 'gemini_document_ocr',
     generatedAt: nowIso(),
-    summary: 'Gemini OCR pipeline for Bale uploads (KTP, KK, slip gaji).',
+    summary: 'Gemini OCR pipeline for Bale uploads (KTP, KK, slip gaji, NPWP, rekening koran).',
     documents,
     fields: [
       ...flattenedFields,

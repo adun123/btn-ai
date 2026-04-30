@@ -9,7 +9,7 @@ const router = express.Router();
  *   post:
  *     tags: [Evidence]
  *     summary: Upload evidence files for a case
- *     description: Bale only accepts documentType values `ktp`, `kk`, or `slip_gaji`. Branch accepts `application_form`, `supporting_document`, `salary_slip`, or `other`.
+ *     description: Bale only accepts documentType values `ktp`, `kk`, `slip_gaji`, `npwp`, or `rekening_koran`. Branch accepts `application_form`, `supporting_document`, `salary_slip`, or `other`.
  *     parameters:
  *       - in: path
  *         name: caseId

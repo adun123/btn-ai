@@ -9,7 +9,7 @@ const router = express.Router();
  *   post:
  *     tags: [Extraction]
  *     summary: Start extraction flow based on channel
- *     description: Branch uses BTN-style block form OCR orchestration. Bale uses lightweight document OCR orchestration.
+ *     description: Branch uses BTN-style block form OCR orchestration. Bale uses lightweight document OCR orchestration and rejects OCR results when the detected visible document type does not match the uploaded Bale `documentType`.
  *     parameters:
  *       - in: path
  *         name: caseId
@@ -19,6 +19,12 @@ const router = express.Router();
  *     responses:
  *       200:
  *         description: Extraction result generated
+ *       400:
+ *         description: Bale extraction rejected because the detected visible document type does not match the uploaded `documentType`
+ *         content:
+ *           application/json:
+ *             schema:
+ *               $ref: '#/components/schemas/DocumentTypeMismatchErrorResponse'
  */
 router.post('/:caseId/extraction/start', async (req, res, next) => {
   try {
