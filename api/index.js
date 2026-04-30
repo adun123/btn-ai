@@ -1,8 +1,10 @@
-const app = require('../backend/src/app');
+const app = require('../src/app');
 
 module.exports = (req, res) => {
-  req.url = req.url.replace(/^\/api/, '');
+  if (req.method === 'OPTIONS') {
+    res.status(200).end();
+    return;
+  }
+
   return app(req, res);
 };
-
-//api di root aja, karena di vercel.json sudah di set routePrefix: /
