@@ -13,6 +13,7 @@ const extractionRoutes = require('./modules/extraction/extraction.routes');
 const app = express();
 
 app.use(cors({ origin: process.env.CORS_ORIGIN || '*' }));
+app.options('*', cors());
 app.use(express.json());
 app.use(express.urlencoded({ extended: true }));
 
