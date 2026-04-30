@@ -220,7 +220,7 @@ export function OcrWorkflowPage() {
       <header className="space-y-1">
         <p className="text-xs font-semibold uppercase tracking-wider text-blue-700 dark:text-blue-300">OCR KPR Submission</p>
         <h1 className="text-2xl font-semibold text-slate-900 dark:text-slate-100 sm:text-3xl">Modern case-based workflow</h1>
-        <p className="text-sm text-slate-600 dark:text-slate-300">Connected to <span className="font-medium">{apiClient.backendUrl}</span></p>
+        {/* <p className="text-sm text-slate-600 dark:text-slate-300">Connected to <span className="font-medium">{apiClient.backendUrl}</span></p> */}
       </header>
 
       <Stepper currentStep={currentStep} />
