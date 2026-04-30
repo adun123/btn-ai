@@ -14,6 +14,12 @@ export function SummaryPanel({ caseId, channel, caseData, extraction, loading }:
     if (channel !== 'bale') return evidence.length;
     return new Set(evidence.map((item) => item.documentType)).size;
   })();
+  const extractionFieldsCount = (() => {
+    const fields = extraction?.fields || [];
+    if (channel !== 'bale') return fields.length;
+    // Bale can include duplicate keys when users re-upload same document type.
+    return new Set(fields.map((field) => field.key)).size;
+  })();
 
   return (
     <aside className="glass-card p-5">
@@ -37,7 +43,7 @@ export function SummaryPanel({ caseId, channel, caseData, extraction, loading }:
         </div>
         <div>
           <p className="text-slate-600 dark:text-slate-300">Extraction fields</p>
-          <p className="font-medium text-slate-900 dark:text-slate-100">{extraction?.fields.length || 0}</p>
+          <p className="font-medium text-slate-900 dark:text-slate-100">{extractionFieldsCount}</p>
         </div>
       </div>
       {loading ? <div className="mt-5 h-2 animate-pulse rounded-full bg-blue-100 dark:bg-blue-950/50" /> : null}

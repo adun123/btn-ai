@@ -167,6 +167,12 @@ export function OcrWorkflowPage() {
   const issueItems = uploadItems.filter((item) => item.status === 'error' || Boolean(item.error));
   const canAdvanceToOcr = uploadedCount > 0;
   const canGoBack = currentStep > 1;
+  const uploadedDocumentsForOcr = (() => {
+    const evidence = caseQuery.data?.evidence || [];
+    if (!evidence.length) return uploadedCount;
+    if (channel !== 'bale') return evidence.length;
+    return new Set(evidence.map((item) => item.documentType)).size;
+  })();
 
   const stepView: Record<WorkflowStep, React.ReactNode> = {
     1: (
@@ -203,7 +209,7 @@ export function OcrWorkflowPage() {
     4: (
       <OcrProcessStep
         loading={startExtraction.isPending}
-        documentCount={caseQuery.data?.evidence.length || uploadedCount}
+        documentCount={uploadedDocumentsForOcr}
         error={globalError || undefined}
         onStart={() => startExtraction.mutate()}
       />
