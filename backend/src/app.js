@@ -25,6 +25,11 @@ app.get('/openapi.json', (req, res) => res.json(openApiSpec));
 
 app.use(healthRoutes);
 app.use('/api', healthRoutes);
+// Support both local server path (/api/...) and Vercel function path (/...).
+app.use('/cases', caseRoutes);
+app.use('/cases', locationRoutes);
+app.use('/cases', evidenceRoutes);
+app.use('/cases', extractionRoutes);
 app.use('/api/cases', caseRoutes);
 app.use('/api/cases', locationRoutes);
 app.use('/api/cases', evidenceRoutes);

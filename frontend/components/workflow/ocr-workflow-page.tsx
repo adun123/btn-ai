@@ -168,19 +168,20 @@ export function OcrWorkflowPage() {
     return 2;
   };
 
-  const onOpenRecentCase = async (selectedCaseId: string) => {
-    try {
-      const selectedCase = await apiClient.getCase(selectedCaseId);
-      setCase({ caseId: selectedCase.id, channel: selectedCase.channel });
-      setStep(inferStepFromCase(selectedCase));
-      setGlobalError('');
-      setNotesDraft(selectedCase.notes || '');
-      setExtractionData(selectedCase.extraction || undefined);
-      queryClient.invalidateQueries({ queryKey: ['case', selectedCase.id] });
-      queryClient.invalidateQueries({ queryKey: ['evidence', selectedCase.id] });
-    } catch (error) {
-      setGlobalError(error instanceof ApiError ? error.message : 'Failed to open selected case');
+  const onOpenRecentCase = (selectedCaseId: string) => {
+    const selectedCase = (casesQuery.data || []).find((item) => item.id === selectedCaseId);
+    if (!selectedCase) {
+      setGlobalError('Selected case no longer exists in recent list. Please refresh and create a new case.');
+      return;
     }
+
+    setCase({ caseId: selectedCase.id, channel: selectedCase.channel });
+    setStep(inferStepFromCase(selectedCase));
+    setGlobalError('');
+    setNotesDraft(selectedCase.notes || '');
+    setExtractionData(selectedCase.extraction || undefined);
+    queryClient.setQueryData(['case', selectedCase.id], selectedCase);
+    queryClient.setQueryData(['evidence', selectedCase.id], selectedCase.evidence || []);
   };
 
   const onUpload = async (documentType: string, file: File) => {
