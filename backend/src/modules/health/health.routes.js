@@ -1,5 +1,5 @@
 const express = require('express');
-const { isSupabaseConfigured } = require('../../data/supabase');
+const { isSupabaseConfigured, getSupabaseEnvDiagnostics } = require('../../data/supabase');
 
 const router = express.Router();
 
@@ -21,6 +21,8 @@ router.get('/health', (req, res) => {
       service: 'btn-kpr-house-assessment-backend',
       storageMode: 'supabase',
       database: isSupabaseConfigured() ? 'supabase_configured' : 'supabase_not_configured',
+      supabase: getSupabaseEnvDiagnostics(),
+      runtime: process.env.VERCEL ? 'vercel' : 'node',
       aiProvider: process.env.GEMINI_API_KEY ? 'gemini_key_present' : 'gemini_key_not_set',
       supportedChannels: ['branch', 'bale'],
       extractionPipelines: {
