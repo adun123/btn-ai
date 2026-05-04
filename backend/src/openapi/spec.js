@@ -11,7 +11,6 @@ const options = {
     tags: [
       { name: 'Health', description: 'Server status and metadata' },
       { name: 'Assessment Cases', description: 'Case lifecycle and metadata' },
-      { name: 'Locations', description: 'Property location capture and confirmation' },
       { name: 'Evidence', description: 'Uploaded files and evidence metadata' },
       { name: 'Extraction', description: 'OCR/extraction orchestration by submission channel' },
     ],
@@ -58,23 +57,6 @@ const options = {
             applicant: { type: 'object', additionalProperties: true },
             property: { type: 'object', additionalProperties: true },
             notes: { type: 'string' },
-          },
-        },
-        LocationPayload: {
-          type: 'object',
-          required: ['rawAddressText'],
-          properties: {
-            rawAddressText: { type: 'string' },
-            normalizedAddressText: { type: 'string' },
-            province: { type: 'string' },
-            cityRegency: { type: 'string' },
-            district: { type: 'string' },
-            subdistrict: { type: 'string' },
-            postalCode: { type: 'string' },
-            latitude: { type: 'number', nullable: true },
-            longitude: { type: 'number', nullable: true },
-            geocodeConfidence: { type: 'number', nullable: true },
-            manuallyConfirmed: { type: 'boolean', default: false },
           },
         },
         EvidenceItem: {
@@ -162,10 +144,6 @@ const options = {
               type: 'object',
               additionalProperties: { type: 'string' },
               description: 'Manual overrides for OCR extracted values keyed by field path token',
-            },
-            location: {
-              allOf: [{ $ref: '#/components/schemas/LocationPayload' }],
-              nullable: true,
             },
             evidence: {
               type: 'array',
