@@ -6,7 +6,6 @@ const { errorHandler, notFoundHandler } = require('./middlewares/errorHandler');
 
 const healthRoutes = require('./modules/health/health.routes');
 const caseRoutes = require('./modules/assessment-core/case.routes');
-const locationRoutes = require('./modules/property-location/location.routes');
 const evidenceRoutes = require('./modules/evidence-documents/evidence.routes');
 const extractionRoutes = require('./modules/extraction/extraction.routes');
 
@@ -27,11 +26,9 @@ app.use(healthRoutes);
 app.use('/api', healthRoutes);
 // Support both local server path (/api/...) and Vercel function path (/...).
 app.use('/cases', caseRoutes);
-app.use('/cases', locationRoutes);
 app.use('/cases', evidenceRoutes);
 app.use('/cases', extractionRoutes);
 app.use('/api/cases', caseRoutes);
-app.use('/api/cases', locationRoutes);
 app.use('/api/cases', evidenceRoutes);
 app.use('/api/cases', extractionRoutes);
 
