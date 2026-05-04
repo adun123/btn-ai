@@ -8,6 +8,7 @@ import { getDocumentLabel } from '../../lib/document-labels';
 import { docsByChannel } from '../../lib/workflow';
 import { useWorkflowStore } from '../../store/workflow-store';
 import type { ExtractionResult, WorkflowStep } from '../../types/ocr';
+import { BtnLogo } from '../branding/btn-logo';
 import { SummaryPanel } from './summary-panel';
 import { Stepper } from './stepper';
 import { CreateCaseStep } from './steps/create-case-step';
@@ -336,17 +337,23 @@ export function OcrWorkflowPage() {
         Data will be lost if server restarts
       </div>
 
-      <header className="space-y-1">
-        <p className="text-xs font-semibold uppercase tracking-wider text-blue-700 dark:text-blue-300">OCR KPR Submission</p>
-        <h1 className="text-2xl font-semibold text-slate-900 dark:text-slate-100 sm:text-3xl">Modern case-based workflow</h1>
-        {/* <p className="text-sm text-slate-600 dark:text-slate-300">Connected to <span className="font-medium">{apiClient.backendUrl}</span></p> */}
-        <button
-          type="button"
-          onClick={onStartNewFlow}
-          className="mt-2 rounded-lg border border-blue-200 bg-white px-3 py-1.5 text-xs font-semibold text-blue-900 transition hover:bg-blue-50 dark:border-blue-900 dark:bg-slate-900 dark:text-blue-200 dark:hover:bg-slate-800"
-        >
-          Restart from beginning
-        </button>
+      <header className="space-y-4 border-b pb-6" style={{ borderColor: 'var(--border)' }}>
+        <div className="flex flex-col gap-4 sm:flex-row sm:items-start sm:justify-between">
+          <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:gap-5">
+            <BtnLogo height={44} className="max-h-11" />
+            <div className="space-y-1">
+              <p className="text-xs font-semibold uppercase tracking-wider text-blue-700 dark:text-blue-300">OCR KPR Submission</p>
+              <h1 className="text-2xl font-semibold text-slate-900 dark:text-slate-100 sm:text-3xl">Modern case-based workflow</h1>
+            </div>
+          </div>
+          <button
+            type="button"
+            onClick={onStartNewFlow}
+            className="shrink-0 self-start rounded-lg border border-blue-200 bg-white px-3 py-1.5 text-xs font-semibold text-blue-900 transition hover:bg-blue-50 dark:border-blue-900 dark:bg-slate-900 dark:text-blue-200 dark:hover:bg-slate-800 sm:self-center"
+          >
+            Restart from beginning
+          </button>
+        </div>
       </header>
 
       <Stepper currentStep={currentStep} />

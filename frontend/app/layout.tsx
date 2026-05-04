@@ -9,8 +9,8 @@ const inter = Inter({
 });
 
 export const metadata: Metadata = {
-  title: 'OCR KPR Submission',
-  description: 'Modern OCR KPR case-based submission workflow.',
+  title: 'BTN — OCR KPR Submission',
+  description: 'Bank BTN — modern OCR KPR case-based submission workflow.',
 };
 
 export default function RootLayout({ children }: Readonly<{ children: React.ReactNode }>) {

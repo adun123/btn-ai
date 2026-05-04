@@ -1,0 +1,10 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 240 48" role="img" aria-labelledby="btnTitle">
+  <title id="btnTitle">Bank BTN</title>
+  <g aria-hidden="true">
+    <path fill="#D45A00" d="M6 40V10L28 4v40L6 40z"/>
+    <path fill="#E86F0C" d="M32 42V8l18-4v42L32 42z"/>
+    <path fill="#F5A623" d="M54 44V6l14-3v44L54 44z"/>
+  </g>
+  <text x="82" y="32" fill="#00356B" font-family="Segoe UI, system-ui, Arial, sans-serif" font-size="28" font-weight="800" letter-spacing="-0.02em">BTN</text>
+  <text x="82" y="44" fill="#00356B" font-family="Segoe UI, system-ui, Arial, sans-serif" font-size="7" font-weight="600" opacity="0.85">Bank Tabungan Negara</text>
+</svg>
