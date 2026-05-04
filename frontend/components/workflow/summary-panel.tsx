@@ -23,11 +23,14 @@ export function SummaryPanel({
   onNotesChange,
   onSaveNotes,
 }: SummaryPanelProps) {
-  const uploadedDocumentsCount = (() => {
-    const evidence = caseData?.evidence || [];
-    if (channel !== 'bale') return evidence.length;
-    return new Set(evidence.map((item) => item.documentType)).size;
-  })();
+  const evidence = caseData?.evidence || [];
+  const uploadedFilesCount = evidence.length;
+  const uploadedTypesCount =
+    channel !== 'bale' ? uploadedFilesCount : new Set(evidence.map((item) => item.documentType)).size;
+  const uploadedDocumentsLabel =
+    channel === 'bale'
+      ? `${uploadedFilesCount} file(s) · ${uploadedTypesCount} type(s)`
+      : `${uploadedFilesCount} file(s)`;
   const extractionFieldsCount = (() => {
     const fields = extraction?.fields || [];
     if (channel !== 'bale') return fields.length;
@@ -53,7 +56,7 @@ export function SummaryPanel({
         </div>
         <div>
           <p className="text-slate-600 dark:text-slate-300">Uploaded documents</p>
-          <p className="font-medium text-slate-900 dark:text-slate-100">{uploadedDocumentsCount}</p>
+          <p className="font-medium text-slate-900 dark:text-slate-100">{uploadedDocumentsLabel}</p>
         </div>
         <div>
           <p className="text-slate-600 dark:text-slate-300">Extraction fields</p>

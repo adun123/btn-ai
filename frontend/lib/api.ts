@@ -4,6 +4,8 @@ const defaultBackendUrl = 'http://localhost:4000';
 
 /** In-memory case data is lost between Vercel serverless instances; we keep a client snapshot to rehydrate. */
 const CASE_SNAPSHOT_PREFIX = 'btn-ocr-case:';
+/** Per-evidence file bytes (base64) for OCR when the server instance does not hold the upload buffer. */
+const EVIDENCE_BIN_PREFIX = 'btn-ocr-ev:';
 
 function normalizeBackendUrl(rawUrl: string): string {
   let normalized = rawUrl.trim();
@@ -71,13 +73,33 @@ async function request<T>(path: string, init?: RequestInit): Promise<T> {
   return (payload as ApiEnvelope<T>).data;
 }
 
-function rememberCaseSnapshot(record: { id?: string } | Record<string, unknown> | null | undefined): void {
-  if (typeof window === 'undefined' || !record || typeof record !== 'object' || !('id' in record) || !record.id) return;
-  try {
-    sessionStorage.setItem(`${CASE_SNAPSHOT_PREFIX}${String(record.id)}`, JSON.stringify(record));
-  } catch {
-    // quota / private mode
+function mergeEvidenceLists(a: EvidenceItem[], b: EvidenceItem[]): EvidenceItem[] {
+  const map = new Map<string, EvidenceItem>();
+  for (const item of a) {
+    map.set(item.id, item);
   }
+  for (const item of b) {
+    const existing = map.get(item.id);
+    if (!existing) {
+      map.set(item.id, item);
+      continue;
+    }
+    const tNew = new Date(item.uploadedAt || 0).getTime();
+    const tOld = new Date(existing.uploadedAt || 0).getTime();
+    map.set(item.id, tNew >= tOld ? item : existing);
+  }
+  return Array.from(map.values());
+}
+
+/** Union evidence + prefer newer scalar fields from incoming (server). */
+export function mergeCaseRecords(previous: CaseRecord | null | undefined, incoming: CaseRecord): CaseRecord {
+  if (!previous) return incoming;
+  const mergedEvidence = mergeEvidenceLists(previous.evidence || [], incoming.evidence || []);
+  return {
+    ...previous,
+    ...incoming,
+    evidence: mergedEvidence,
+  };
 }
 
 function getCaseSnapshot(caseId: string): Record<string, unknown> | null {
@@ -88,6 +110,20 @@ function getCaseSnapshot(caseId: string): Record<string, unknown> | null {
     return JSON.parse(raw) as Record<string, unknown>;
   } catch {
     return null;
+  }
+}
+
+function rememberCaseSnapshot(record: CaseRecord | Record<string, unknown> | null | undefined): void {
+  if (typeof window === 'undefined' || !record || typeof record !== 'object' || !('id' in record) || !record.id) return;
+  const id = String(record.id);
+  try {
+    const prevRaw = getCaseSnapshot(id);
+    const prev = prevRaw ? ({ ...prevRaw, id: prevRaw.id as string } as CaseRecord) : null;
+    const incoming = record as CaseRecord;
+    const merged = mergeCaseRecords(prev, incoming);
+    sessionStorage.setItem(`${CASE_SNAPSHOT_PREFIX}${id}`, JSON.stringify(merged));
+  } catch {
+    // quota / private mode
   }
 }
 
@@ -120,13 +156,7 @@ function mergeCaseLists(server: CaseRecord[], local: CaseRecord[]): CaseRecord[]
   }
   for (const item of local) {
     const existing = map.get(item.id);
-    if (!existing) {
-      map.set(item.id, item);
-      continue;
-    }
-    const tNew = new Date(item.updatedAt || 0).getTime();
-    const tOld = new Date(existing.updatedAt || 0).getTime();
-    map.set(item.id, tNew >= tOld ? item : existing);
+    map.set(item.id, existing ? mergeCaseRecords(existing, item) : item);
   }
   return Array.from(map.values()).sort(
     (a, b) => new Date(b.updatedAt || 0).getTime() - new Date(a.updatedAt || 0).getTime(),
@@ -139,9 +169,89 @@ function withClientCase(caseId: string, body: Record<string, unknown>): Record<s
   return { ...body, clientCase: snap };
 }
 
+function fileToBase64(file: File): Promise<string> {
+  return new Promise((resolve, reject) => {
+    const reader = new FileReader();
+    reader.onload = () => {
+      const r = reader.result as string;
+      const base64 = r.includes(',') ? r.split(',')[1] || '' : r;
+      resolve(base64);
+    };
+    reader.onerror = () => reject(reader.error);
+    reader.readAsDataURL(file);
+  });
+}
+
+async function storeEvidenceBlobForNewUpload(
+  caseId: string,
+  documentType: string,
+  file: File,
+  serverCase: CaseRecord,
+): Promise<void> {
+  const prevSnap = getCaseSnapshot(caseId);
+  const prevEvidence = (prevSnap?.evidence as EvidenceItem[] | undefined) || [];
+  const prevIds = new Set(prevEvidence.map((e) => e.id));
+  const merged = mergeCaseRecords(prevSnap as CaseRecord | null, serverCase);
+  const added = (merged.evidence || []).filter((e) => !prevIds.has(e.id));
+  const match =
+    added.find((e) => e.documentType === documentType && e.filename === file.name) ||
+    added.find((e) => e.documentType === documentType) ||
+    added[added.length - 1];
+  if (!match) return;
+  try {
+    const base64Data = await fileToBase64(file);
+    sessionStorage.setItem(
+      `${EVIDENCE_BIN_PREFIX}${match.id}`,
+      JSON.stringify({
+        base64Data,
+        mimeType: file.type || 'application/octet-stream',
+      }),
+    );
+  } catch {
+    // quota exceeded — extraction may fail on another instance
+  }
+}
+
+function collectEvidenceFilePayloads(evidence: EvidenceItem[]): Record<string, { base64Data: string; mimeType: string }> {
+  const out: Record<string, { base64Data: string; mimeType: string }> = {};
+  if (typeof window === 'undefined') return out;
+  for (const item of evidence) {
+    try {
+      const raw = sessionStorage.getItem(`${EVIDENCE_BIN_PREFIX}${item.id}`);
+      if (!raw) continue;
+      const parsed = JSON.parse(raw) as { base64Data?: string; mimeType?: string };
+      if (parsed?.base64Data) {
+        out[item.id] = {
+          base64Data: parsed.base64Data,
+          mimeType: parsed.mimeType || 'application/octet-stream',
+        };
+      }
+    } catch {
+      // skip
+    }
+  }
+  return out;
+}
+
+/** Clear cached blobs (e.g. new workflow). Does not remove case JSON snapshots. */
+export function clearAllEvidenceBlobs(): void {
+  if (typeof window === 'undefined') return;
+  try {
+    const toRemove: string[] = [];
+    for (let i = 0; i < sessionStorage.length; i += 1) {
+      const key = sessionStorage.key(i);
+      if (key?.startsWith(EVIDENCE_BIN_PREFIX)) toRemove.push(key);
+    }
+    toRemove.forEach((key) => sessionStorage.removeItem(key));
+  } catch {
+    // ignore
+  }
+}
+
 export const apiClient = {
   backendUrl,
   createCase: async (channel: Channel) => {
+    clearAllEvidenceBlobs();
     const data = await request<CaseRecord>('/cases', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
@@ -203,8 +313,15 @@ export const apiClient = {
       xhr.onload = () => {
         const payload = xhr.response as ApiEnvelope<{ case: CaseRecord }> | ApiErrorShape | null;
         if (xhr.status >= 200 && xhr.status < 300 && payload && 'data' in payload) {
-          rememberCaseSnapshot(payload.data.case);
-          resolve(payload.data.case);
+          void (async () => {
+            try {
+              await storeEvidenceBlobForNewUpload(caseId, documentType, file, payload.data.case);
+            } catch {
+              // non-fatal
+            }
+            rememberCaseSnapshot(payload.data.case);
+            resolve(payload.data.case);
+          })();
           return;
         }
 
@@ -215,10 +332,20 @@ export const apiClient = {
       xhr.send(formData);
     }),
   startExtraction: async (caseId: string) => {
+    const snap = getCaseSnapshot(caseId) as CaseRecord | null;
+    const evidence = (snap?.evidence as EvidenceItem[] | undefined) || [];
+    const evidenceFilePayloads = collectEvidenceFilePayloads(evidence);
+    const body: Record<string, unknown> = {
+      ...withClientCase(caseId, {}),
+    };
+    if (Object.keys(evidenceFilePayloads).length > 0) {
+      body.evidenceFilePayloads = evidenceFilePayloads;
+    }
+
     const extraction = await request<ExtractionResult>(`/cases/${encodeURIComponent(caseId)}/extraction/start`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify(withClientCase(caseId, {})),
+      body: JSON.stringify(body),
     });
     const prev = getCaseSnapshot(caseId);
     if (prev) {
@@ -256,7 +383,13 @@ export const apiClient = {
   },
   getEvidence: async (caseId: string) => {
     try {
-      return await request<EvidenceItem[]>(`/cases/${encodeURIComponent(caseId)}/evidence`);
+      const list = await request<EvidenceItem[]>(`/cases/${encodeURIComponent(caseId)}/evidence`);
+      const snap = getCaseSnapshot(caseId);
+      const local = snap?.evidence;
+      if (Array.isArray(local)) {
+        return mergeEvidenceLists(list, local as EvidenceItem[]);
+      }
+      return list;
     } catch (error) {
       if (error instanceof ApiError && error.status === 404) {
         const snap = getCaseSnapshot(caseId);
@@ -271,8 +404,10 @@ export const apiClient = {
   getCase: async (caseId: string) => {
     try {
       const data = await request<CaseRecord>(`/cases/${encodeURIComponent(caseId)}`);
-      rememberCaseSnapshot(data);
-      return data;
+      const snap = getCaseSnapshot(caseId) as CaseRecord | null;
+      const merged = mergeCaseRecords(snap, data);
+      rememberCaseSnapshot(merged);
+      return merged;
     } catch (error) {
       if (error instanceof ApiError && error.status === 404) {
         const snap = getCaseSnapshot(caseId);

@@ -95,8 +95,32 @@ async function buildBaleExtraction(record) {
   };
 }
 
-async function startExtraction(caseId, clientCase) {
+async function startExtraction(caseId, body = {}) {
+  const clientCase = body.clientCase;
+  const evidenceFilePayloads = body.evidenceFilePayloads;
   const record = caseService.getCase(caseId, clientCase);
+
+  if (evidenceFilePayloads && typeof evidenceFilePayloads === 'object' && !Array.isArray(evidenceFilePayloads)) {
+    for (const [evidenceId, payload] of Object.entries(evidenceFilePayloads)) {
+      if (!payload || typeof payload !== 'object') continue;
+      const base64Data = payload.base64Data;
+      const mimeType = payload.mimeType;
+      if (typeof base64Data !== 'string' || typeof mimeType !== 'string') continue;
+
+      if (db.evidenceFiles.has(evidenceId)) {
+        continue;
+      }
+
+      const meta = record.evidence.find((item) => item.id === evidenceId);
+      db.evidenceFiles.set(evidenceId, {
+        base64Data,
+        mimeType,
+        originalname: meta?.filename || 'upload.bin',
+        size: Buffer.byteLength(base64Data, 'base64'),
+      });
+    }
+  }
+
   if (!record.evidence.length) {
     throw createHttpError(400, 'Evidence must be uploaded before extraction starts');
   }

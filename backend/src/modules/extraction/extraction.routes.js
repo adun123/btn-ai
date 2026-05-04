@@ -28,7 +28,7 @@ const router = express.Router();
  */
 router.post('/:caseId/extraction/start', async (req, res, next) => {
   try {
-    res.json({ success: true, data: await service.startExtraction(req.params.caseId, req.body?.clientCase) });
+    res.json({ success: true, data: await service.startExtraction(req.params.caseId, req.body || {}) });
   } catch (error) {
     next(error);
   }

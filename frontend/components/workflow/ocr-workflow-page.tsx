@@ -3,7 +3,7 @@
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { useEffect, useMemo, useState } from 'react';
 import { Bot, CircleAlert, X } from 'lucide-react';
-import { apiClient, ApiError } from '../../lib/api';
+import { apiClient, ApiError, clearAllEvidenceBlobs, mergeCaseRecords } from '../../lib/api';
 import { getDocumentLabel } from '../../lib/document-labels';
 import { docsByChannel } from '../../lib/workflow';
 import { useWorkflowStore } from '../../store/workflow-store';
@@ -148,6 +148,7 @@ export function OcrWorkflowPage() {
 
   const onStartNewFlow = () => {
     reset();
+    clearAllEvidenceBlobs();
     setGlobalError('');
     setRawAddressText('');
     setExtractionData(undefined);
@@ -261,8 +262,16 @@ export function OcrWorkflowPage() {
   const issueItems = uploadItems.filter((item) => item.status === 'error' || Boolean(item.error));
   const canAdvanceToOcr = uploadedCount > 0;
   const canGoBack = currentStep > 1;
+  const summaryCaseData = useMemo(() => {
+    const c = caseQuery.data;
+    const ev = evidenceQuery.data;
+    if (!c) return undefined;
+    if (!ev?.length) return c;
+    return mergeCaseRecords(c, { ...c, evidence: ev });
+  }, [caseQuery.data, evidenceQuery.data]);
+
   const uploadedDocumentsForOcr = (() => {
-    const evidence = evidenceQuery.data || caseQuery.data?.evidence || [];
+    const evidence = summaryCaseData?.evidence || evidenceQuery.data || caseQuery.data?.evidence || [];
     if (!evidence.length) return uploadedCount;
     if (channel !== 'bale') return evidence.length;
     return new Set(evidence.map((item) => item.documentType)).size;
@@ -364,7 +373,7 @@ export function OcrWorkflowPage() {
         <SummaryPanel
           caseId={caseId}
           channel={channel}
-          caseData={caseQuery.data}
+          caseData={summaryCaseData}
           extraction={extractionData || caseQuery.data?.extraction}
           loading={caseQuery.isLoading}
           notesDraft={notesDraft}
