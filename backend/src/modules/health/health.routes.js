@@ -18,7 +18,8 @@ router.get('/health', (req, res) => {
     data: {
       status: 'ok',
       service: 'btn-kpr-house-assessment-backend',
-      storageMode: 'in-memory',
+      storageMode: 'supabase',
+      database: process.env.SUPABASE_URL ? 'supabase_url_present' : 'supabase_url_not_set',
       aiProvider: process.env.GEMINI_API_KEY ? 'gemini_key_present' : 'gemini_key_not_set',
       supportedChannels: ['branch', 'bale'],
       extractionPipelines: {

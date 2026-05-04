@@ -50,9 +50,9 @@ router.post('/:caseId/extraction/start', async (req, res, next) => {
  *       200:
  *         description: Extraction detail
  */
-router.get('/:caseId/extraction', (req, res, next) => {
+router.get('/:caseId/extraction', async (req, res, next) => {
   try {
-    res.json({ success: true, data: service.getExtraction(req.params.caseId) });
+    res.json({ success: true, data: await service.getExtraction(req.params.caseId) });
   } catch (error) {
     next(error);
   }

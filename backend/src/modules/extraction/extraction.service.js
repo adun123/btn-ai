@@ -1,7 +1,7 @@
-const { db } = require('../../data/memoryDb');
 const { nowIso } = require('../../utils/caseFactory');
 const { createHttpError } = require('../../utils/httpError');
 const caseService = require('../assessment-core/case.service');
+const evidenceRepository = require('../evidence-documents/evidence.repository');
 const { extractDocument } = require('../provider-gateway/gemini-ocr.service');
 const { normalizeDocumentType } = require('../evidence-documents/evidence.service');
 
@@ -34,7 +34,7 @@ async function buildBaleExtraction(record) {
   }
 
   const documents = await Promise.all(targetEvidence.map(async (item) => {
-    const payload = db.evidenceFiles.get(item.id);
+    const payload = await evidenceRepository.findEvidenceContentById(item.id);
     if (!payload) {
       throw createHttpError(500, `Evidence content missing for ${item.filename}`);
     }
@@ -97,30 +97,7 @@ async function buildBaleExtraction(record) {
 
 async function startExtraction(caseId, body = {}) {
   const clientCase = body.clientCase;
-  const evidenceFilePayloads = body.evidenceFilePayloads;
-  const record = caseService.getCase(caseId, clientCase);
-
-  if (evidenceFilePayloads && typeof evidenceFilePayloads === 'object' && !Array.isArray(evidenceFilePayloads)) {
-    for (const [evidenceId, payload] of Object.entries(evidenceFilePayloads)) {
-      if (!payload || typeof payload !== 'object') continue;
-      const base64Data = payload.base64Data;
-      const mimeType = payload.mimeType;
-      if (typeof base64Data !== 'string' || typeof mimeType !== 'string') continue;
-
-      if (db.evidenceFiles.has(evidenceId)) {
-        continue;
-      }
-
-      const meta = record.evidence.find((item) => item.id === evidenceId);
-      db.evidenceFiles.set(evidenceId, {
-        base64Data,
-        mimeType,
-        originalname: meta?.filename || 'upload.bin',
-        size: Buffer.byteLength(base64Data, 'base64'),
-      });
-    }
-  }
-
+  const record = await caseService.getCase(caseId, clientCase);
   if (!record.evidence.length) {
     throw createHttpError(400, 'Evidence must be uploaded before extraction starts');
   }
@@ -141,11 +118,13 @@ async function startExtraction(caseId, body = {}) {
   });
   record.updatedAt = nowIso();
 
+  await caseService.saveCaseRecord(record);
+
   return extraction;
 }
 
-function getExtraction(caseId) {
-  const record = caseService.getCase(caseId);
+async function getExtraction(caseId) {
+  const record = await caseService.getCase(caseId);
   if (!record.extraction) {
     throw createHttpError(404, 'Extraction result not found for this case');
   }
