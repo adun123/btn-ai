@@ -36,7 +36,6 @@ function normalizeClientCaseSnapshot(caseId, snapshot) {
       ? snapshot.property
       : {},
     notes: typeof snapshot.notes === 'string' ? snapshot.notes : '',
-    location: snapshot.location ?? null,
     evidence: Array.isArray(snapshot.evidence) ? snapshot.evidence : [],
     extraction: snapshot.extraction ?? null,
     manualExtractionEdits:
