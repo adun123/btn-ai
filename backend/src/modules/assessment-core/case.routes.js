@@ -123,7 +123,7 @@ router.patch('/:caseId', (req, res, next) => {
  */
 router.post('/:caseId/status', (req, res, next) => {
   try {
-    res.json({ success: true, data: service.updateStatus(req.params.caseId, req.body?.status) });
+    res.json({ success: true, data: service.updateStatus(req.params.caseId, req.body || {}) });
   } catch (error) {
     next(error);
   }

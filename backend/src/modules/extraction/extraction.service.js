@@ -95,8 +95,8 @@ async function buildBaleExtraction(record) {
   };
 }
 
-async function startExtraction(caseId) {
-  const record = caseService.getCase(caseId);
+async function startExtraction(caseId, clientCase) {
+  const record = caseService.getCase(caseId, clientCase);
   if (!record.evidence.length) {
     throw createHttpError(400, 'Evidence must be uploaded before extraction starts');
   }

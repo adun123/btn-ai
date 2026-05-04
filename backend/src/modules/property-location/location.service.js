@@ -1,25 +1,27 @@
 const { nowIso } = require('../../utils/caseFactory');
 const { createHttpError } = require('../../utils/httpError');
+const { splitClientCasePayload } = require('../../utils/clientCaseSnapshot');
 const caseService = require('../assessment-core/case.service');
 
 function saveLocation(caseId, payload) {
-  const record = caseService.getCase(caseId);
-  if (!payload?.rawAddressText) {
+  const { clientCase, rest } = splitClientCasePayload(payload);
+  const record = caseService.getCase(caseId, clientCase);
+  if (!rest?.rawAddressText) {
     throw createHttpError(400, 'rawAddressText is required');
   }
 
   record.location = {
-    rawAddressText: payload.rawAddressText,
-    normalizedAddressText: payload.normalizedAddressText || payload.rawAddressText,
-    province: payload.province || null,
-    cityRegency: payload.cityRegency || null,
-    district: payload.district || null,
-    subdistrict: payload.subdistrict || null,
-    postalCode: payload.postalCode || null,
-    latitude: payload.latitude ?? null,
-    longitude: payload.longitude ?? null,
-    geocodeConfidence: payload.geocodeConfidence ?? null,
-    manuallyConfirmed: Boolean(payload.manuallyConfirmed),
+    rawAddressText: rest.rawAddressText,
+    normalizedAddressText: rest.normalizedAddressText || rest.rawAddressText,
+    province: rest.province || null,
+    cityRegency: rest.cityRegency || null,
+    district: rest.district || null,
+    subdistrict: rest.subdistrict || null,
+    postalCode: rest.postalCode || null,
+    latitude: rest.latitude ?? null,
+    longitude: rest.longitude ?? null,
+    geocodeConfidence: rest.geocodeConfidence ?? null,
+    manuallyConfirmed: Boolean(rest.manuallyConfirmed),
     updatedAt: nowIso(),
   };
 

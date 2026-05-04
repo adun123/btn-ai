@@ -13,8 +13,20 @@ const upload = multer({
   limits: { fileSize: 10 * 1024 * 1024 },
 });
 
+function parseClientCaseFromBody(body) {
+  let clientCase = body?.clientCase;
+  if (typeof clientCase === 'string') {
+    try {
+      clientCase = JSON.parse(clientCase);
+    } catch {
+      clientCase = undefined;
+    }
+  }
+  return clientCase;
+}
+
 function addEvidence(caseId, files, body) {
-  const record = caseService.getCase(caseId);
+  const record = caseService.getCase(caseId, parseClientCaseFromBody(body || {}));
   if (!files || files.length === 0) {
     throw createHttpError(400, 'At least one file is required');
   }

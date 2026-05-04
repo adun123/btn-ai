@@ -1,6 +1,7 @@
 const repository = require('./case.repository');
 const { createAssessmentCase, nowIso } = require('../../utils/caseFactory');
 const { createHttpError } = require('../../utils/httpError');
+const { normalizeClientCaseSnapshot, splitClientCasePayload } = require('../../utils/clientCaseSnapshot');
 
 const allowedChannels = new Set(['branch', 'bale']);
 
@@ -25,8 +26,14 @@ function createCase(payload) {
   return repository.saveCase(record);
 }
 
-function getCase(caseId) {
-  const record = repository.findCaseById(caseId);
+function getCase(caseId, clientCase) {
+  let record = repository.findCaseById(caseId);
+  if (!record && clientCase !== undefined && clientCase !== null) {
+    const normalized = normalizeClientCaseSnapshot(caseId, clientCase);
+    if (normalized) {
+      record = repository.saveCase(normalized);
+    }
+  }
   if (!record) {
     throw createHttpError(404, 'Assessment case not found');
   }
@@ -38,24 +45,27 @@ function getCaseList() {
 }
 
 function patchCase(caseId, payload) {
-  const record = getCase(caseId);
-  if (payload.notes !== undefined) record.notes = payload.notes;
-  if (payload.applicant !== undefined) record.applicant = payload.applicant;
-  if (payload.property !== undefined) record.property = payload.property;
-  if (payload.manualExtractionEdits !== undefined) {
-    if (payload.manualExtractionEdits && typeof payload.manualExtractionEdits === 'object' && !Array.isArray(payload.manualExtractionEdits)) {
-      record.manualExtractionEdits = payload.manualExtractionEdits;
+  const { clientCase, rest } = splitClientCasePayload(payload);
+  const record = getCase(caseId, clientCase);
+  if (rest.notes !== undefined) record.notes = rest.notes;
+  if (rest.applicant !== undefined) record.applicant = rest.applicant;
+  if (rest.property !== undefined) record.property = rest.property;
+  if (rest.manualExtractionEdits !== undefined) {
+    if (rest.manualExtractionEdits && typeof rest.manualExtractionEdits === 'object' && !Array.isArray(rest.manualExtractionEdits)) {
+      record.manualExtractionEdits = rest.manualExtractionEdits;
     } else {
       throw createHttpError(400, 'manualExtractionEdits must be an object');
     }
   }
 
-  appendAudit(record, 'case_updated', payload);
+  appendAudit(record, 'case_updated', rest);
   return repository.saveCase(record);
 }
 
-function updateStatus(caseId, status) {
-  const record = getCase(caseId);
+function updateStatus(caseId, payload) {
+  const { clientCase, rest } = splitClientCasePayload(payload);
+  const record = getCase(caseId, clientCase);
+  const status = rest.status;
   if (!status || typeof status !== 'string') {
     throw createHttpError(400, 'status is required');
   }
