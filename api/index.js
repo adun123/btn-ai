@@ -1,4 +1,4 @@
-const app = require('../src/app');
+const app = require('../backend/src/app');
 
 module.exports = (req, res) => {
   if (req.method === 'OPTIONS') {

@@ -20,18 +20,18 @@ function appendAudit(record, action, payload = {}) {
   record.updatedAt = nowIso();
 }
 
-function createCase(payload) {
+async function createCase(payload) {
   validateChannel(payload.channel);
   const record = createAssessmentCase(payload);
   return repository.saveCase(record);
 }
 
-function getCase(caseId, clientCase) {
-  let record = repository.findCaseById(caseId);
+async function getCase(caseId, clientCase) {
+  let record = await repository.findCaseById(caseId);
   if (!record && clientCase !== undefined && clientCase !== null) {
     const normalized = normalizeClientCaseSnapshot(caseId, clientCase);
     if (normalized) {
-      record = repository.saveCase(normalized);
+      record = await repository.saveCase(normalized);
     }
   }
   if (!record) {
@@ -40,13 +40,13 @@ function getCase(caseId, clientCase) {
   return record;
 }
 
-function getCaseList() {
+async function getCaseList() {
   return repository.listCases();
 }
 
-function patchCase(caseId, payload) {
+async function patchCase(caseId, payload) {
   const { clientCase, rest } = splitClientCasePayload(payload);
-  const record = getCase(caseId, clientCase);
+  const record = await getCase(caseId, clientCase);
   if (rest.notes !== undefined) record.notes = rest.notes;
   if (rest.applicant !== undefined) record.applicant = rest.applicant;
   if (rest.property !== undefined) record.property = rest.property;
@@ -62,9 +62,9 @@ function patchCase(caseId, payload) {
   return repository.saveCase(record);
 }
 
-function updateStatus(caseId, payload) {
+async function updateStatus(caseId, payload) {
   const { clientCase, rest } = splitClientCasePayload(payload);
-  const record = getCase(caseId, clientCase);
+  const record = await getCase(caseId, clientCase);
   const status = rest.status;
   if (!status || typeof status !== 'string') {
     throw createHttpError(400, 'status is required');
@@ -75,10 +75,15 @@ function updateStatus(caseId, payload) {
   return repository.saveCase(record);
 }
 
+async function saveCaseRecord(record) {
+  return repository.saveCase(record);
+}
+
 module.exports = {
   createCase,
   getCase,
   getCaseList,
   patchCase,
+  saveCaseRecord,
   updateStatus,
 };

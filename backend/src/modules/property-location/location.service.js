@@ -3,9 +3,9 @@ const { createHttpError } = require('../../utils/httpError');
 const { splitClientCasePayload } = require('../../utils/clientCaseSnapshot');
 const caseService = require('../assessment-core/case.service');
 
-function saveLocation(caseId, payload) {
+async function saveLocation(caseId, payload) {
   const { clientCase, rest } = splitClientCasePayload(payload);
-  const record = caseService.getCase(caseId, clientCase);
+  const record = await caseService.getCase(caseId, clientCase);
   if (!rest?.rawAddressText) {
     throw createHttpError(400, 'rawAddressText is required');
   }
@@ -32,7 +32,7 @@ function saveLocation(caseId, payload) {
   });
   record.updatedAt = nowIso();
 
-  return record;
+  return caseService.saveCaseRecord(record);
 }
 
 module.exports = { saveLocation };

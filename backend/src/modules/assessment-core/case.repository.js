@@ -1,16 +1,76 @@
-const { db } = require('../../data/memoryDb');
+const { getSupabase, unwrapSupabase } = require('../../data/supabase');
+const { mapCaseRowToRecord, mapEvidenceRow, toCaseRow } = require('../../data/case-mappers');
 
-function saveCase(record) {
-  db.cases.set(record.id, record);
-  return record;
+async function loadEvidenceRows(caseIds) {
+  if (!caseIds.length) {
+    return [];
+  }
+
+  const supabase = getSupabase();
+  const result = await supabase
+    .from('evidence_documents')
+    .select('id, case_id, document_type, filename, mimetype, size, notes, uploaded_at')
+    .in('case_id', caseIds)
+    .order('uploaded_at', { ascending: true });
+
+  return unwrapSupabase(result, 'load evidence documents');
 }
 
-function findCaseById(caseId) {
-  return db.cases.get(caseId) || null;
+function buildEvidenceMap(rows) {
+  return rows.reduce((accumulator, row) => {
+    const items = accumulator.get(row.case_id) || [];
+    items.push(mapEvidenceRow(row));
+    accumulator.set(row.case_id, items);
+    return accumulator;
+  }, new Map());
 }
 
-function listCases() {
-  return Array.from(db.cases.values());
+async function hydrateCases(caseRows) {
+  const evidenceRows = await loadEvidenceRows(caseRows.map((row) => row.id));
+  const evidenceByCaseId = buildEvidenceMap(evidenceRows);
+
+  return caseRows.map((row) => mapCaseRowToRecord(row, evidenceByCaseId.get(row.id) || []));
+}
+
+async function saveCase(record) {
+  const supabase = getSupabase();
+  const result = await supabase
+    .from('cases')
+    .upsert(toCaseRow(record))
+    .select('*')
+    .single();
+
+  const saved = unwrapSupabase(result, 'save case');
+  const [hydrated] = await hydrateCases([saved]);
+  return hydrated;
+}
+
+async function findCaseById(caseId) {
+  const supabase = getSupabase();
+  const result = await supabase
+    .from('cases')
+    .select('*')
+    .eq('id', caseId)
+    .maybeSingle();
+
+  const row = unwrapSupabase(result, 'load case');
+  if (!row) {
+    return null;
+  }
+
+  const [hydrated] = await hydrateCases([row]);
+  return hydrated;
+}
+
+async function listCases() {
+  const supabase = getSupabase();
+  const result = await supabase
+    .from('cases')
+    .select('*')
+    .order('created_at', { ascending: false });
+
+  const rows = unwrapSupabase(result, 'list cases');
+  return hydrateCases(rows);
 }
 
 module.exports = {

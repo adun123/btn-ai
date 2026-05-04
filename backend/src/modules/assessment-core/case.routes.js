@@ -19,9 +19,9 @@ const router = express.Router();
  *       201:
  *         description: Assessment case created
  */
-router.post('/', (req, res, next) => {
+router.post('/', async (req, res, next) => {
   try {
-    const record = service.createCase(req.body || {});
+    const record = await service.createCase(req.body || {});
     res.status(201).json({ success: true, data: record });
   } catch (error) {
     next(error);
@@ -38,9 +38,9 @@ router.post('/', (req, res, next) => {
  *       200:
  *         description: List of cases
  */
-router.get('/', (req, res, next) => {
+router.get('/', async (req, res, next) => {
   try {
-    res.json({ success: true, data: service.getCaseList() });
+    res.json({ success: true, data: await service.getCaseList() });
   } catch (error) {
     next(error);
   }
@@ -62,9 +62,9 @@ router.get('/', (req, res, next) => {
  *       200:
  *         description: Case detail
  */
-router.get('/:caseId', (req, res, next) => {
+router.get('/:caseId', async (req, res, next) => {
   try {
-    res.json({ success: true, data: service.getCase(req.params.caseId) });
+    res.json({ success: true, data: await service.getCase(req.params.caseId) });
   } catch (error) {
     next(error);
   }
@@ -86,9 +86,9 @@ router.get('/:caseId', (req, res, next) => {
  *       200:
  *         description: Updated case
  */
-router.patch('/:caseId', (req, res, next) => {
+router.patch('/:caseId', async (req, res, next) => {
   try {
-    res.json({ success: true, data: service.patchCase(req.params.caseId, req.body || {}) });
+    res.json({ success: true, data: await service.patchCase(req.params.caseId, req.body || {}) });
   } catch (error) {
     next(error);
   }
@@ -121,9 +121,9 @@ router.patch('/:caseId', (req, res, next) => {
  *       200:
  *         description: Updated status
  */
-router.post('/:caseId/status', (req, res, next) => {
+router.post('/:caseId/status', async (req, res, next) => {
   try {
-    res.json({ success: true, data: service.updateStatus(req.params.caseId, req.body || {}) });
+    res.json({ success: true, data: await service.updateStatus(req.params.caseId, req.body || {}) });
   } catch (error) {
     next(error);
   }
