@@ -25,9 +25,32 @@ function buildBranchExtraction() {
   };
 }
 
+function selectLatestBaleEvidence(evidence, allowedTypes) {
+  const latestByType = new Map();
+
+  evidence.forEach((item, index) => {
+    if (!allowedTypes.has(item.documentType)) {
+      return;
+    }
+
+    const uploadedAtMs = Date.parse(item.uploadedAt) || 0;
+    const current = latestByType.get(item.documentType);
+
+    if (!current || uploadedAtMs > current.uploadedAtMs || (uploadedAtMs === current.uploadedAtMs && index > current.index)) {
+      latestByType.set(item.documentType, {
+        item,
+        uploadedAtMs,
+        index,
+      });
+    }
+  });
+
+  return evidence.filter((item) => latestByType.get(item.documentType)?.item === item);
+}
+
 async function buildBaleExtraction(record) {
   const allowedTypes = new Set(['ktp', 'kk', 'slip_gaji', 'npwp', 'rekening_koran']);
-  const targetEvidence = record.evidence.filter((item) => allowedTypes.has(item.documentType));
+  const targetEvidence = selectLatestBaleEvidence(record.evidence, allowedTypes);
 
   if (!targetEvidence.length) {
     throw createHttpError(400, 'Bale extraction requires at least one of: ktp, kk, slip_gaji, npwp, rekening_koran');
