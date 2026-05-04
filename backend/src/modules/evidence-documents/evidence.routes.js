@@ -40,9 +40,9 @@ const router = express.Router();
  *       400:
  *         description: Invalid documentType for the case channel
  */
-router.post('/:caseId/evidence', service.upload.array('files', 10), (req, res, next) => {
+router.post('/:caseId/evidence', service.upload.array('files', 10), async (req, res, next) => {
   try {
-    res.json({ success: true, data: service.addEvidence(req.params.caseId, req.files, req.body || {}) });
+    res.json({ success: true, data: await service.addEvidence(req.params.caseId, req.files, req.body || {}) });
   } catch (error) {
     next(error);
   }
@@ -64,9 +64,9 @@ router.post('/:caseId/evidence', service.upload.array('files', 10), (req, res, n
  *       200:
  *         description: Evidence list
  */
-router.get('/:caseId/evidence', (req, res, next) => {
+router.get('/:caseId/evidence', async (req, res, next) => {
   try {
-    res.json({ success: true, data: service.listEvidence(req.params.caseId) });
+    res.json({ success: true, data: await service.listEvidence(req.params.caseId) });
   } catch (error) {
     next(error);
   }

@@ -25,9 +25,9 @@ const router = express.Router();
  *       200:
  *         description: Updated case with location
  */
-router.post('/:caseId/location', (req, res, next) => {
+router.post('/:caseId/location', async (req, res, next) => {
   try {
-    res.json({ success: true, data: service.saveLocation(req.params.caseId, req.body || {}) });
+    res.json({ success: true, data: await service.saveLocation(req.params.caseId, req.body || {}) });
   } catch (error) {
     next(error);
   }

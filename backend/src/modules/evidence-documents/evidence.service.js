@@ -1,9 +1,9 @@
 const multer = require('multer');
 const { randomUUID } = require('node:crypto');
-const { db } = require('../../data/memoryDb');
 const { nowIso } = require('../../utils/caseFactory');
 const { createHttpError } = require('../../utils/httpError');
 const caseService = require('../assessment-core/case.service');
+const repository = require('./evidence.repository');
 
 const branchDocumentTypes = new Set(['application_form', 'supporting_document', 'salary_slip', 'other']);
 const baleDocumentTypes = new Set(['ktp', 'kk', 'slip_gaji', 'npwp', 'rekening_koran']);
@@ -25,8 +25,8 @@ function parseClientCaseFromBody(body) {
   return clientCase;
 }
 
-function addEvidence(caseId, files, body) {
-  const record = caseService.getCase(caseId, parseClientCaseFromBody(body || {}));
+async function addEvidence(caseId, files, body) {
+  const record = await caseService.getCase(caseId, parseClientCaseFromBody(body || {}));
   if (!files || files.length === 0) {
     throw createHttpError(400, 'At least one file is required');
   }
@@ -47,29 +47,21 @@ function addEvidence(caseId, files, body) {
     uploadedAt: timestamp,
   }));
 
-  items.forEach((item, index) => {
-    db.evidenceFiles.set(item.id, {
-      base64Data: files[index].buffer.toString('base64'),
-      mimeType: files[index].mimetype,
-      originalname: files[index].originalname,
-      size: files[index].size,
-    });
-  });
-
-  record.evidence.push(...items);
+  const uploaded = await repository.insertEvidence(caseId, items, files);
   record.auditTrail.push({
     action: 'evidence_uploaded',
     timestamp,
     payload: {
       documentType,
-      files: items.map((item) => ({ id: item.id, filename: item.filename })),
+      files: uploaded.map((item) => ({ id: item.id, filename: item.filename })),
     },
   });
   record.updatedAt = timestamp;
+  const savedCase = await caseService.saveCaseRecord(record);
 
   return {
-    case: record,
-    uploaded: items,
+    case: savedCase,
+    uploaded,
   };
 }
 
@@ -94,8 +86,8 @@ function validateDocumentType(channel, documentType) {
   }
 }
 
-function listEvidence(caseId) {
-  return caseService.getCase(caseId).evidence;
+async function listEvidence(caseId) {
+  return (await caseService.getCase(caseId)).evidence;
 }
 
 module.exports = {

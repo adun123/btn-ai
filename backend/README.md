@@ -7,15 +7,21 @@ Backend-first Express API for a house/KPR assessment flow with two intake channe
 
 ## Current scope
 
-This implementation is intentionally **database-free** and uses **in-memory storage** so API contracts, Swagger docs, and orchestration flow can be verified first.
+This implementation now persists data in **Supabase Postgres** so API contracts, Swagger docs, and orchestration flow can be verified without losing every case on server restart.
 
 That means:
 
-- data is lost when the server restarts
-- uploaded file content is stored in memory for the current process only
+- case data and uploaded evidence are stored in Supabase tables
+- uploaded file payload is currently stored as base64 in the database for PoC simplicity
 - `bale` extraction now calls Gemini OCR for `ktp`, `kk`, `slip_gaji`, `npwp`, and `rekening_koran`
 - `branch` extraction remains a placeholder/orchestration entry for future BTN block form OCR
 - default demo model is `gemini-3-flash-preview` unless `GEMINI_MODEL` is overridden
+
+Required backend env:
+
+- `SUPABASE_URL`
+- `SUPABASE_SERVICE_ROLE_KEY`
+- `GEMINI_API_KEY` for Bale OCR
 
 ## Run locally
 
@@ -30,19 +36,21 @@ Server:
 - Swagger UI: `http://localhost:4000/api-docs`
 - OpenAPI JSON: `http://localhost:4000/openapi.json`
 
+Schema snapshot for this repo is tracked in `backend/supabase/migrations/20260504_init_btn_assessment_persistence.sql`.
+
 ## Main endpoints
 
 - `GET /health`
-- `POST /cases`
-- `GET /cases`
-- `GET /cases/:caseId`
-- `PATCH /cases/:caseId`
-- `POST /cases/:caseId/status`
-- `POST /cases/:caseId/location`
-- `POST /cases/:caseId/evidence`
-- `GET /cases/:caseId/evidence`
-- `POST /cases/:caseId/extraction/start`
-- `GET /cases/:caseId/extraction`
+- `POST /api/cases`
+- `GET /api/cases`
+- `GET /api/cases/:caseId`
+- `PATCH /api/cases/:caseId`
+- `POST /api/cases/:caseId/status`
+- `POST /api/cases/:caseId/location`
+- `POST /api/cases/:caseId/evidence`
+- `GET /api/cases/:caseId/evidence`
+- `POST /api/cases/:caseId/extraction/start`
+- `GET /api/cases/:caseId/extraction`
 
 ## What is `caseId`?
 
@@ -59,15 +67,15 @@ Once a case is created, everything else is attached to that same case:
 
 Typical flow:
 
-1. `POST /cases` → create a new case
+1. `POST /api/cases` → create a new case
 2. backend returns `data.id` → this is the `caseId`
 3. use that `caseId` for all next steps
 
 Example:
 
-- `POST /cases/{caseId}/location`
-- `POST /cases/{caseId}/evidence`
-- `POST /cases/{caseId}/extraction/start`
+- `POST /api/cases/{caseId}/location`
+- `POST /api/cases/{caseId}/evidence`
+- `POST /api/cases/{caseId}/extraction/start`
 
 Without `caseId`, the backend would not know which uploaded files and OCR results belong to which submission.
 
@@ -108,7 +116,7 @@ npm start
 
 3. Create a case first:
 
-- endpoint: `POST /cases`
+- endpoint: `POST /api/cases`
 - body example:
 
 ```json
@@ -127,7 +135,7 @@ npm start
 
 5. Upload evidence using the same `caseId`:
 
-- endpoint: `POST /cases/{caseId}/evidence`
+- endpoint: `POST /api/cases/{caseId}/evidence`
 - for `bale`, use only these `documentType` values:
   - `ktp`
   - `kk`
@@ -137,18 +145,18 @@ npm start
 
 6. Start OCR:
 
-- endpoint: `POST /cases/{caseId}/extraction/start`
+- endpoint: `POST /api/cases/{caseId}/extraction/start`
 
 7. Read OCR result:
 
-- endpoint: `GET /cases/{caseId}/extraction`
+- endpoint: `GET /api/cases/{caseId}/extraction`
 
 ### Option B — Manual API test from terminal / Postman
 
 #### 1. Create case
 
 ```bash
-curl -X POST http://localhost:4000/cases \
+curl -X POST http://localhost:4000/api/cases \
   -H "Content-Type: application/json" \
   -d '{
     "channel": "bale",
@@ -162,7 +170,7 @@ Save the returned `data.id`.
 #### 2. Upload KTP / KK / slip gaji / NPWP / rekening koran
 
 ```bash
-curl -X POST http://localhost:4000/cases/<caseId>/evidence \
+curl -X POST http://localhost:4000/api/cases/<caseId>/evidence \
   -F "documentType=ktp" \
   -F "files=@/path/to/ktp.png"
 ```
@@ -170,13 +178,13 @@ curl -X POST http://localhost:4000/cases/<caseId>/evidence \
 #### 3. Start OCR
 
 ```bash
-curl -X POST http://localhost:4000/cases/<caseId>/extraction/start
+curl -X POST http://localhost:4000/api/cases/<caseId>/extraction/start
 ```
 
 #### 4. Read OCR result
 
 ```bash
-curl http://localhost:4000/cases/<caseId>/extraction
+curl http://localhost:4000/api/cases/<caseId>/extraction
 ```
 
 ## What to expect during development
