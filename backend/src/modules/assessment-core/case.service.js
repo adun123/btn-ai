@@ -75,6 +75,14 @@ async function updateStatus(caseId, payload) {
   return repository.saveCase(record);
 }
 
+async function deleteCase(caseId) {
+  const deleted = await repository.deleteCase(caseId);
+  if (!deleted) {
+    throw createHttpError(404, 'Assessment case not found');
+  }
+  return { id: caseId, deleted: true };
+}
+
 async function saveCaseRecord(record) {
   return repository.saveCase(record);
 }
@@ -86,4 +94,5 @@ module.exports = {
   patchCase,
   saveCaseRecord,
   updateStatus,
+  deleteCase,
 };
