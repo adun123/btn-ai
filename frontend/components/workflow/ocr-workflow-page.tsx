@@ -343,7 +343,7 @@ export function OcrWorkflowPage() {
             <BtnLogo height={44} className="max-h-11" />
             <div className="space-y-1">
               <p className="text-xs font-semibold uppercase tracking-wider text-blue-700 dark:text-blue-300">OCR KPR Submission</p>
-              <h1 className="text-2xl font-semibold text-slate-900 dark:text-slate-100 sm:text-3xl">Modern case-based workflow</h1>
+              <h1 className="text-2xl font-semibold text-slate-900 dark:text-slate-100 sm:text-3xl">Document Intelligence</h1>
             </div>
           </div>
           <button
