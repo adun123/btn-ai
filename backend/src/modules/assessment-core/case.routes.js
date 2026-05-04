@@ -70,6 +70,14 @@ router.get('/:caseId', async (req, res, next) => {
   }
 });
 
+router.delete('/:caseId', async (req, res, next) => {
+  try {
+    res.json({ success: true, data: await service.deleteCase(req.params.caseId) });
+  } catch (error) {
+    next(error);
+  }
+});
+
 /**
  * @openapi
  * /cases/{caseId}:
