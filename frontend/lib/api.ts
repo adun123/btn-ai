@@ -113,6 +113,15 @@ function getCaseSnapshot(caseId: string): Record<string, unknown> | null {
   }
 }
 
+function forgetCaseSnapshot(caseId: string): void {
+  if (typeof window === 'undefined' || !caseId) return;
+  try {
+    sessionStorage.removeItem(`${CASE_SNAPSHOT_PREFIX}${caseId}`);
+  } catch {
+    // ignore
+  }
+}
+
 function rememberCaseSnapshot(record: CaseRecord | Record<string, unknown> | null | undefined): void {
   if (typeof window === 'undefined' || !record || typeof record !== 'object' || !('id' in record) || !record.id) return;
   const id = String(record.id);
@@ -173,7 +182,6 @@ function slimClientCaseForRehydration(snap: Record<string, unknown>): Record<str
     applicant: snap.applicant,
     property: snap.property,
     notes: snap.notes,
-    location: snap.location,
     evidence: snap.evidence,
     extraction: snap.extraction,
     manualExtractionEdits: snap.manualExtractionEdits,
@@ -216,15 +224,6 @@ export const apiClient = {
         applicant: { fullName: 'KPR Applicant' },
         property: { propertyType: 'house' },
       }),
-    });
-    rememberCaseSnapshot(data);
-    return data;
-  },
-  saveLocation: async (caseId: string, rawAddressText: string) => {
-    const data = await request<CaseRecord>(`/cases/${encodeURIComponent(caseId)}/location`, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify(withClientCase(caseId, { rawAddressText })),
     });
     rememberCaseSnapshot(data);
     return data;
@@ -362,6 +361,13 @@ export const apiClient = {
       }
       throw error;
     }
+  },
+  deleteCase: async (caseId: string) => {
+    const data = await request<{ id: string; deleted: boolean }>(`/cases/${encodeURIComponent(caseId)}`, {
+      method: 'DELETE',
+    });
+    forgetCaseSnapshot(caseId);
+    return data;
   },
   patchCase: async (caseId: string, payload: Record<string, unknown>) => {
     const data = await request<CaseRecord>(`/cases/${encodeURIComponent(caseId)}`, {
