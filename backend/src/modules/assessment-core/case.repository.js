@@ -73,8 +73,21 @@ async function listCases() {
   return hydrateCases(rows);
 }
 
+async function deleteCase(caseId) {
+  const supabase = getSupabase();
+  const result = await supabase
+    .from('cases')
+    .delete()
+    .eq('id', caseId)
+    .select('id');
+
+  const rows = unwrapSupabase(result, 'delete case');
+  return Array.isArray(rows) && rows.length > 0;
+}
+
 module.exports = {
   saveCase,
   findCaseById,
   listCases,
+  deleteCase,
 };
