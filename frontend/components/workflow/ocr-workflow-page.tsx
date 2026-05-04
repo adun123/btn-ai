@@ -7,12 +7,11 @@ import { apiClient, ApiError, clearAllEvidenceBlobs, mergeCaseRecords } from '..
 import { getDocumentLabel } from '../../lib/document-labels';
 import { docsByChannel } from '../../lib/workflow';
 import { useWorkflowStore } from '../../store/workflow-store';
-import type { ExtractionResult, WorkflowStep } from '../../types/ocr';
+import type { EvidenceItem, ExtractionResult, WorkflowStep } from '../../types/ocr';
 import { BtnLogo } from '../branding/btn-logo';
 import { SummaryPanel } from './summary-panel';
 import { Stepper } from './stepper';
 import { CreateCaseStep } from './steps/create-case-step';
-import { LocationStep } from './steps/location-step';
 import { OcrProcessStep } from './steps/ocr-process-step';
 import { OcrResultStep } from './steps/ocr-result-step';
 import { UploadDocumentsStep } from './steps/upload-documents-step';
@@ -22,6 +21,8 @@ type UploadState = {
   notes: string;
   progress: number;
   lastFile?: File;
+  savedFilename?: string;
+  savedAt?: string;
   error?: string;
 };
 
@@ -30,22 +31,13 @@ export function OcrWorkflowPage() {
   const { caseId, channel, currentStep, setCase, setStep, reset } = useWorkflowStore();
   const [globalError, setGlobalError] = useState<string>('');
   const [assistantOpen, setAssistantOpen] = useState(false);
-  const [rawAddressText, setRawAddressText] = useState('');
   const [extractionData, setExtractionData] = useState<ExtractionResult | undefined>(undefined);
   const [uploadMap, setUploadMap] = useState<Record<string, UploadState>>({});
   const [notesDraft, setNotesDraft] = useState('');
+  const [deletingCaseId, setDeletingCaseId] = useState('');
   const allowedMimeTypes = ['image/jpeg', 'image/png', 'image/webp', 'application/pdf'];
 
   const docTypes = docsByChannel[channel];
-
-  const uploadItems = useMemo(
-    () =>
-      docTypes.map((documentType) => ({
-        documentType,
-        ...(uploadMap[documentType] || { status: 'empty', notes: '', progress: 0 }),
-      })),
-    [docTypes, uploadMap],
-  );
 
   const caseQuery = useQuery({
     queryKey: ['case', caseId],
@@ -64,6 +56,45 @@ export function OcrWorkflowPage() {
     enabled: Boolean(caseId),
   });
 
+  const persistedEvidenceByType = useMemo(() => {
+    const evidence = evidenceQuery.data || caseQuery.data?.evidence || [];
+    return evidence.reduce<Record<string, EvidenceItem>>((acc, item) => {
+      const current = acc[item.documentType];
+      if (!current || new Date(item.uploadedAt).getTime() >= new Date(current.uploadedAt).getTime()) {
+        acc[item.documentType] = item;
+      }
+      return acc;
+    }, {});
+  }, [caseQuery.data?.evidence, evidenceQuery.data]);
+
+  const uploadItems = useMemo(
+    () =>
+      docTypes.map((documentType) => {
+        const localState = uploadMap[documentType];
+        if (localState) {
+          return {
+            documentType,
+            ...localState,
+          };
+        }
+
+        const persistedEvidence = persistedEvidenceByType[documentType];
+        if (persistedEvidence) {
+          return {
+            documentType,
+            status: 'uploaded' as const,
+            notes: persistedEvidence.notes || '',
+            progress: 100,
+            savedFilename: persistedEvidence.filename,
+            savedAt: persistedEvidence.uploadedAt,
+          };
+        }
+
+        return { documentType, status: 'empty' as const, notes: '', progress: 0 };
+      }),
+    [docTypes, persistedEvidenceByType, uploadMap],
+  );
+
   const createCase = useMutation({
     mutationFn: apiClient.createCase,
     onSuccess: (nextCase) => {
@@ -79,17 +110,6 @@ export function OcrWorkflowPage() {
     onError: (error) => setGlobalError(error instanceof ApiError ? error.message : 'Failed to create case'),
   });
 
-  const saveLocation = useMutation({
-    mutationFn: () => apiClient.saveLocation(caseId, rawAddressText),
-    onSuccess: () => {
-      setStep(3);
-      setGlobalError('');
-      queryClient.invalidateQueries({ queryKey: ['case', caseId] });
-      void apiClient.updateCaseStatus(caseId, 'location_saved');
-    },
-    onError: (error) => setGlobalError(error instanceof ApiError ? error.message : 'Failed to save location'),
-  });
-
   const startExtraction = useMutation({
     mutationFn: async () => {
       await apiClient.startExtraction(caseId);
@@ -97,7 +117,7 @@ export function OcrWorkflowPage() {
     },
     onSuccess: (payload) => {
       setExtractionData(payload);
-      setStep(5);
+      setStep(4);
       setGlobalError('');
       queryClient.invalidateQueries({ queryKey: ['case', caseId] });
       void apiClient.updateCaseStatus(caseId, 'extraction_completed');
@@ -132,6 +152,32 @@ export function OcrWorkflowPage() {
     onError: (error) => setGlobalError(error instanceof ApiError ? error.message : 'Failed to save manual edits'),
   });
 
+  const deleteCase = useMutation({
+    mutationFn: (selectedCaseId: string) => apiClient.deleteCase(selectedCaseId),
+    onMutate: (selectedCaseId) => {
+      setDeletingCaseId(selectedCaseId);
+      setGlobalError('');
+    },
+    onSuccess: (_result, deletedCaseId) => {
+      queryClient.setQueryData(['cases'], (previous: Awaited<ReturnType<typeof apiClient.getCases>> | undefined) =>
+        previous?.filter((item) => item.id !== deletedCaseId) ?? previous,
+      );
+      queryClient.invalidateQueries({ queryKey: ['cases'] });
+      queryClient.removeQueries({ queryKey: ['case', deletedCaseId] });
+      queryClient.removeQueries({ queryKey: ['evidence', deletedCaseId] });
+
+      if (deletedCaseId === caseId) {
+        reset();
+        clearAllEvidenceBlobs();
+        setExtractionData(undefined);
+        setUploadMap({});
+        setNotesDraft('');
+      }
+    },
+    onError: (error) => setGlobalError(error instanceof ApiError ? error.message : 'Failed to delete case'),
+    onSettled: () => setDeletingCaseId(''),
+  });
+
   useEffect(() => {
     setNotesDraft(caseQuery.data?.notes || '');
   }, [caseQuery.data?.notes]);
@@ -141,7 +187,6 @@ export function OcrWorkflowPage() {
     setCase({ caseId: '', channel: selected });
     setStep(1);
     setGlobalError('');
-    setRawAddressText('');
     setExtractionData(undefined);
     setUploadMap({});
     setNotesDraft('');
@@ -151,7 +196,6 @@ export function OcrWorkflowPage() {
     reset();
     clearAllEvidenceBlobs();
     setGlobalError('');
-    setRawAddressText('');
     setExtractionData(undefined);
     setUploadMap({});
     setNotesDraft('');
@@ -160,13 +204,13 @@ export function OcrWorkflowPage() {
   };
 
   const inferStepFromCase = (record: { status?: string; extraction?: unknown; evidence?: unknown[] }): WorkflowStep => {
-    if (record.extraction) return 5;
+    if (record.extraction) return 4;
     const status = (record.status || '').toLowerCase();
-    if (status === 'extraction_completed') return 5;
-    if (status === 'evidence_uploaded') return 4;
-    if (status === 'location_saved') return 3;
+    if (status === 'extraction_completed') return 4;
+    if (status === 'evidence_uploaded') return 3;
+    if (status === 'location_saved') return 2;
     if (status === 'case_created' || status === 'draft') return 2;
-    if (Array.isArray(record.evidence) && record.evidence.length > 0) return 4;
+    if (Array.isArray(record.evidence) && record.evidence.length > 0) return 3;
     return 2;
   };
 
@@ -180,6 +224,7 @@ export function OcrWorkflowPage() {
     setCase({ caseId: selectedCase.id, channel: selectedCase.channel });
     setStep(inferStepFromCase(selectedCase));
     setGlobalError('');
+    setUploadMap({});
     setNotesDraft(selectedCase.notes || '');
     setExtractionData(selectedCase.extraction || undefined);
     queryClient.setQueryData(['case', selectedCase.id], selectedCase);
@@ -283,21 +328,15 @@ export function OcrWorkflowPage() {
       <CreateCaseStep
         selectedChannel={channel}
         loading={createCase.isPending}
+        deletingCaseId={deletingCaseId}
         recentCases={casesQuery.data || []}
         onSelectChannel={onSelectChannel}
         onStart={() => createCase.mutate(channel)}
         onOpenCase={(selectedCaseId) => void onOpenRecentCase(selectedCaseId)}
+        onDeleteCase={(selectedCaseId) => deleteCase.mutate(selectedCaseId)}
       />
     ),
     2: (
-      <LocationStep
-        value={rawAddressText}
-        loading={saveLocation.isPending}
-        onChange={setRawAddressText}
-        onSubmit={() => saveLocation.mutate()}
-      />
-    ),
-    3: (
       <UploadDocumentsStep
         loading={false}
         items={uploadItems}
@@ -312,7 +351,7 @@ export function OcrWorkflowPage() {
         onRetry={onRetryUpload}
       />
     ),
-    4: (
+    3: (
       <OcrProcessStep
         loading={startExtraction.isPending}
         documentCount={uploadedDocumentsForOcr}
@@ -320,7 +359,7 @@ export function OcrWorkflowPage() {
         onStart={() => startExtraction.mutate()}
       />
     ),
-    5: (
+    4: (
       <OcrResultStep
         extraction={extractionData || caseQuery.data?.extraction}
         loading={caseQuery.isLoading}
@@ -389,7 +428,7 @@ export function OcrWorkflowPage() {
           onSaveNotes={() => saveCaseNotes.mutate(notesDraft)}
         />
       </section>
-      {currentStep === 3 && assistantOpen ? (
+      {currentStep === 2 && assistantOpen ? (
         <div className="fixed bottom-24 right-4 z-20 w-[calc(100%-2rem)] max-w-xs rounded-2xl border border-blue-200 bg-white p-4 shadow-xl dark:border-blue-900 dark:bg-slate-900 lg:bottom-24 lg:max-w-sm">
           <div className="mb-2 flex items-center justify-between">
             <p className="text-sm font-semibold text-blue-900 dark:text-blue-200">AI Upload Assistant</p>
@@ -419,10 +458,10 @@ export function OcrWorkflowPage() {
       ) : null}
 
       <div className="hidden items-center gap-3 lg:flex">
-        {currentStep === 3 ? (
+        {currentStep === 2 ? (
           <button
             type="button"
-            onClick={() => setStep(4)}
+            onClick={() => setStep(3)}
             disabled={!canAdvanceToOcr}
             className="rounded-xl bg-blue-900 px-5 py-3 text-sm font-semibold text-white disabled:opacity-50 dark:bg-blue-600"
           >
@@ -447,18 +486,18 @@ export function OcrWorkflowPage() {
           <button
             type="button"
             onClick={() => {
-              if (currentStep === 3 && canAdvanceToOcr) setStep(4);
-              if (currentStep === 4 && extractionData) setStep(5);
+              if (currentStep === 2 && canAdvanceToOcr) setStep(3);
+              if (currentStep === 3 && extractionData) setStep(4);
             }}
-            disabled={(currentStep === 3 && !canAdvanceToOcr) || (currentStep === 4 && !extractionData)}
+            disabled={(currentStep === 2 && !canAdvanceToOcr) || (currentStep === 3 && !extractionData)}
             className="w-full rounded-xl bg-blue-900 px-4 py-3 text-sm font-semibold text-white disabled:opacity-50 dark:bg-blue-600"
           >
-            {currentStep === 3 ? 'Continue' : currentStep === 4 ? 'Result' : 'Continue'}
+            {currentStep === 2 ? 'Continue' : currentStep === 3 ? 'Result' : 'Continue'}
           </button>
         </div>
       </div>
 
-      {currentStep === 3 ? (
+      {currentStep === 2 ? (
         <button
           type="button"
           onClick={() => setAssistantOpen((prev) => !prev)}
