@@ -7,7 +7,7 @@ const DOCUMENT_FIELD_TEMPLATES = {
   ktp: ['nik', 'full_name', 'birth_place', 'birth_date', 'address', 'rt_rw', 'kelurahan', 'kecamatan', 'religion', 'marital_status', 'occupation'],
   kk: ['nomor_kk', 'kepala_keluarga', 'alamat', 'rt_rw', 'desa_kelurahan', 'kecamatan', 'kabupaten_kota', 'provinsi', 'members'],
   slip_gaji: ['employee_name', 'company_name', 'period', 'position', 'gross_income', 'net_income', 'deductions'],
-  npwp: ['npwp_number', 'registered_name', 'nik', 'address', 'kpp_registered', 'effective_date'],
+  npwp: ['npwp_number', 'registered_name', 'address', 'effective_date'],
   rekening_koran: ['account_holder_name', 'bank_name', 'account_number', 'statement_period', 'opening_balance', 'closing_balance', 'transactions'],
 };
 
@@ -79,11 +79,16 @@ function normalizeGeminiPayload(parsed, fallbackType) {
     }))
     : [];
 
+  const normalizedDocumentType = String(parsed?.document_type || fallbackType);
+  const filteredFields = normalizedDocumentType === 'npwp'
+    ? fields.filter((field) => !['nik', 'kpp_registered'].includes(field.key))
+    : fields;
+
   return {
-    documentType: String(parsed?.document_type || fallbackType),
+    documentType: normalizedDocumentType,
     confidence: Number.isFinite(parsed?.confidence) ? Number(parsed.confidence) : 0,
     summary: typeof parsed?.summary === 'string' ? parsed.summary : 'OCR extraction completed.',
-    fields,
+    fields: filteredFields,
     warnings: Array.isArray(parsed?.warnings) ? parsed.warnings.map((item) => String(item)) : [],
   };
 }
