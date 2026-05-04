@@ -7,7 +7,7 @@ import { apiClient, ApiError, clearAllEvidenceBlobs, mergeCaseRecords } from '..
 import { getDocumentLabel } from '../../lib/document-labels';
 import { docsByChannel } from '../../lib/workflow';
 import { useWorkflowStore } from '../../store/workflow-store';
-import type { EvidenceItem, ExtractionResult, WorkflowStep } from '../../types/ocr';
+import type { CaseRecord, EvidenceItem, ExtractionResult, WorkflowStep } from '../../types/ocr';
 import { BtnLogo } from '../branding/btn-logo';
 import { SummaryPanel } from './summary-panel';
 import { Stepper } from './stepper';
@@ -24,6 +24,13 @@ type UploadState = {
   savedFilename?: string;
   savedAt?: string;
   error?: string;
+};
+
+const upsertCaseIntoCasesCache = (previous: CaseRecord[] | undefined, nextCase: CaseRecord): CaseRecord[] => {
+  const existingCase = previous?.find((item) => item.id === nextCase.id);
+  const mergedCase = existingCase ? mergeCaseRecords(existingCase, nextCase) : nextCase;
+
+  return [mergedCase, ...(previous || []).filter((item) => item.id !== nextCase.id)];
 };
 
 export function OcrWorkflowPage() {
@@ -193,6 +200,26 @@ export function OcrWorkflowPage() {
   };
 
   const onStartNewFlow = () => {
+    if (caseQuery.data) {
+      const latestEvidence = evidenceQuery.data || caseQuery.data.evidence;
+      const latestExtraction = extractionData || caseQuery.data.extraction;
+      const latestStatus = latestExtraction
+        ? 'extraction_completed'
+        : latestEvidence.length > 0 && ['draft', 'case_created'].includes(caseQuery.data.status)
+          ? 'evidence_uploaded'
+          : caseQuery.data.status;
+      const latestCase = mergeCaseRecords(caseQuery.data, {
+        ...caseQuery.data,
+        evidence: latestEvidence,
+        extraction: latestExtraction,
+        status: latestStatus,
+      });
+
+      queryClient.setQueryData(['case', caseQuery.data.id], latestCase);
+      queryClient.setQueryData(['cases'], (previous: CaseRecord[] | undefined) => upsertCaseIntoCasesCache(previous, latestCase));
+      void queryClient.invalidateQueries({ queryKey: ['cases'] });
+    }
+
     reset();
     clearAllEvidenceBlobs();
     setGlobalError('');
