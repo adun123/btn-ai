@@ -24,9 +24,15 @@ export function SummaryPanel({
   onSaveNotes,
 }: SummaryPanelProps) {
   const evidence = caseData?.evidence || [];
-  const uploadedFilesCount = evidence.length;
-  const uploadedTypesCount =
-    channel !== 'bale' ? uploadedFilesCount : new Set(evidence.map((item) => item.documentType)).size;
+  const latestBaleEvidenceByType = evidence.reduce<Record<string, (typeof evidence)[number]>>((acc, item) => {
+    const current = acc[item.documentType];
+    if (!current || new Date(item.uploadedAt).getTime() >= new Date(current.uploadedAt).getTime()) {
+      acc[item.documentType] = item;
+    }
+    return acc;
+  }, {});
+  const uploadedFilesCount = channel !== 'bale' ? evidence.length : Object.keys(latestBaleEvidenceByType).length;
+  const uploadedTypesCount = channel !== 'bale' ? uploadedFilesCount : Object.keys(latestBaleEvidenceByType).length;
   const uploadedDocumentsLabel =
     channel === 'bale'
       ? `${uploadedFilesCount} file(s) · ${uploadedTypesCount} type(s)`
