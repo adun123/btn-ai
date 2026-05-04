@@ -169,6 +169,185 @@ function withClientCase(caseId: string, body: Record<string, unknown>): Record<s
   return { ...body, clientCase: snap };
 }
 
+/** Strip heavy fields before POSTing case JSON with large base64 blobs (Vercel ~4.5MB body cap). */
+function slimClientCaseForRehydration(snap: Record<string, unknown>): Record<string, unknown> {
+  return {
+    id: snap.id,
+    referenceNumber: snap.referenceNumber,
+    channel: snap.channel,
+    status: snap.status,
+    applicant: snap.applicant,
+    property: snap.property,
+    notes: snap.notes,
+    location: snap.location,
+    evidence: snap.evidence,
+    extraction: snap.extraction,
+    manualExtractionEdits: snap.manualExtractionEdits,
+    createdAt: snap.createdAt,
+    updatedAt: snap.updatedAt,
+    auditTrail: [],
+  };
+}
+
+const MAX_OCR_IMAGE_EDGE = 1280;
+const JPEG_QUALITY = 0.72;
+/** ~260KB binary in base64; recompress if client has older full-res blobs in sessionStorage. */
+const MAX_BASE64_CHARS_BEFORE_RESHRINK = 400_000;
+
+/** Vercel serverless rejects bodies ~>4.5MB; stay under with JSON overhead + clientCase. */
+const VERCEL_EXTRACTION_JSON_BUDGET_CHARS = 3_500_000;
+
+type ShrinkImageOpts = { maxEdge?: number; jpegQuality?: number };
+
+async function shrinkImageFileForOcr(
+  file: File,
+  opts?: ShrinkImageOpts,
+): Promise<{ base64Data: string; mimeType: string }> {
+  const maxEdge = opts?.maxEdge ?? MAX_OCR_IMAGE_EDGE;
+  const jpegQuality = opts?.jpegQuality ?? JPEG_QUALITY;
+
+  if (!file.type.startsWith('image/')) {
+    const base64Data = await fileToBase64(file);
+    return { base64Data, mimeType: file.type || 'application/octet-stream' };
+  }
+
+  let bitmap: ImageBitmap | null = null;
+  try {
+    bitmap = await createImageBitmap(file);
+  } catch {
+    const base64Data = await fileToBase64(file);
+    return { base64Data, mimeType: file.type || 'application/octet-stream' };
+  }
+
+  try {
+    let { width, height } = bitmap;
+    if (width > maxEdge || height > maxEdge) {
+      const scale = Math.min(maxEdge / width, maxEdge / height);
+      width = Math.round(width * scale);
+      height = Math.round(height * scale);
+    }
+
+    const canvas = document.createElement('canvas');
+    canvas.width = width;
+    canvas.height = height;
+    const ctx = canvas.getContext('2d');
+    if (!ctx) {
+      const base64Data = await fileToBase64(file);
+      return { base64Data, mimeType: file.type || 'image/jpeg' };
+    }
+    ctx.drawImage(bitmap, 0, 0, width, height);
+
+    const outMime = 'image/jpeg';
+    const blob = await new Promise<Blob | null>((resolve) =>
+      canvas.toBlob((b) => resolve(b), outMime, jpegQuality),
+    );
+    if (!blob) {
+      const base64Data = await fileToBase64(file);
+      return { base64Data, mimeType: file.type || 'image/jpeg' };
+    }
+
+    const base64Data = await blobToBase64(blob);
+    return { base64Data, mimeType: outMime };
+  } finally {
+    bitmap.close();
+  }
+}
+
+function blobToBase64(blob: Blob): Promise<string> {
+  return new Promise((resolve, reject) => {
+    const reader = new FileReader();
+    reader.onload = () => {
+      const r = reader.result as string;
+      resolve(r.includes(',') ? r.split(',')[1] || '' : r);
+    };
+    reader.onerror = () => reject(reader.error);
+    reader.readAsDataURL(blob);
+  });
+}
+
+async function maybeShrinkCachedImagePayload(parsed: {
+  base64Data: string;
+  mimeType: string;
+}): Promise<{ base64Data: string; mimeType: string }> {
+  const { base64Data, mimeType } = parsed;
+  if (!mimeType.startsWith('image/') || base64Data.length <= MAX_BASE64_CHARS_BEFORE_RESHRINK) {
+    return parsed;
+  }
+  try {
+    const dataUrl = `data:${mimeType};base64,${base64Data}`;
+    const res = await fetch(dataUrl);
+    const blob = await res.blob();
+    const file = new File([blob], 'evidence.bin', { type: mimeType });
+    return shrinkImageFileForOcr(file);
+  } catch {
+    return parsed;
+  }
+}
+
+async function shrinkBase64ImageForOcr(
+  base64Data: string,
+  mimeType: string,
+  shrinkOpts: { maxEdge: number; jpegQuality: number },
+): Promise<{ base64Data: string; mimeType: string }> {
+  if (!mimeType.startsWith('image/')) {
+    return { base64Data, mimeType };
+  }
+  try {
+    const dataUrl = `data:${mimeType};base64,${base64Data}`;
+    const res = await fetch(dataUrl);
+    const blob = await res.blob();
+    const file = new File([blob], 'evidence.bin', { type: mimeType });
+    return shrinkImageFileForOcr(file, shrinkOpts);
+  } catch {
+    return { base64Data, mimeType };
+  }
+}
+
+async function fitEvidenceFilePayloadsUnderBudget(
+  slimClientCase: Record<string, unknown> | undefined,
+  payloads: Record<string, { base64Data: string; mimeType: string }>,
+): Promise<Record<string, { base64Data: string; mimeType: string }>> {
+  const measure = (p: Record<string, { base64Data: string; mimeType: string }>) => {
+    const shell: Record<string, unknown> = {};
+    if (slimClientCase) shell.clientCase = slimClientCase;
+    if (Object.keys(p).length > 0) shell.evidenceFilePayloads = p;
+    return JSON.stringify(shell).length;
+  };
+
+  let current: Record<string, { base64Data: string; mimeType: string }> = { ...payloads };
+  const tiers = [
+    { maxEdge: 1280, jpegQuality: 0.72 },
+    { maxEdge: 1024, jpegQuality: 0.65 },
+    { maxEdge: 896, jpegQuality: 0.58 },
+    { maxEdge: 768, jpegQuality: 0.52 },
+    { maxEdge: 640, jpegQuality: 0.46 },
+  ];
+  let tierIdx = 0;
+  let guard = 0;
+  while (measure(current) > VERCEL_EXTRACTION_JSON_BUDGET_CHARS && guard < 100) {
+    const ids = Object.keys(current);
+    if (!ids.length) break;
+    let maxId = ids[0]!;
+    let maxLen = current[maxId]?.base64Data.length ?? 0;
+    for (const id of ids) {
+      const len = current[id]?.base64Data.length ?? 0;
+      if (len > maxLen) {
+        maxLen = len;
+        maxId = id;
+      }
+    }
+    const t = tiers[Math.min(tierIdx, tiers.length - 1)]!;
+    const prev = current[maxId]!;
+    current = {
+      ...current,
+      [maxId]: await shrinkBase64ImageForOcr(prev.base64Data, prev.mimeType, t),
+    };
+    guard += 1;
+    if (guard % 3 === 0 && tierIdx < tiers.length - 1) tierIdx += 1;
+  }
+  return current;
+}
+
 function fileToBase64(file: File): Promise<string> {
   return new Promise((resolve, reject) => {
     const reader = new FileReader();
@@ -199,12 +378,12 @@ async function storeEvidenceBlobForNewUpload(
     added[added.length - 1];
   if (!match) return;
   try {
-    const base64Data = await fileToBase64(file);
+    const { base64Data, mimeType } = await shrinkImageFileForOcr(file);
     sessionStorage.setItem(
       `${EVIDENCE_BIN_PREFIX}${match.id}`,
       JSON.stringify({
         base64Data,
-        mimeType: file.type || 'application/octet-stream',
+        mimeType,
       }),
     );
   } catch {
@@ -212,7 +391,9 @@ async function storeEvidenceBlobForNewUpload(
   }
 }
 
-function collectEvidenceFilePayloads(evidence: EvidenceItem[]): Record<string, { base64Data: string; mimeType: string }> {
+async function collectEvidenceFilePayloads(
+  evidence: EvidenceItem[],
+): Promise<Record<string, { base64Data: string; mimeType: string }>> {
   const out: Record<string, { base64Data: string; mimeType: string }> = {};
   if (typeof window === 'undefined') return out;
   for (const item of evidence) {
@@ -221,10 +402,11 @@ function collectEvidenceFilePayloads(evidence: EvidenceItem[]): Record<string, {
       if (!raw) continue;
       const parsed = JSON.parse(raw) as { base64Data?: string; mimeType?: string };
       if (parsed?.base64Data) {
-        out[item.id] = {
+        const mimeType = parsed.mimeType || 'application/octet-stream';
+        out[item.id] = await maybeShrinkCachedImagePayload({
           base64Data: parsed.base64Data,
-          mimeType: parsed.mimeType || 'application/octet-stream',
-        };
+          mimeType,
+        });
       }
     } catch {
       // skip
@@ -334,10 +516,15 @@ export const apiClient = {
   startExtraction: async (caseId: string) => {
     const snap = getCaseSnapshot(caseId) as CaseRecord | null;
     const evidence = (snap?.evidence as EvidenceItem[] | undefined) || [];
-    const evidenceFilePayloads = collectEvidenceFilePayloads(evidence);
-    const body: Record<string, unknown> = {
-      ...withClientCase(caseId, {}),
-    };
+    const slim = snap ? slimClientCaseForRehydration(snap) : undefined;
+    let evidenceFilePayloads = await collectEvidenceFilePayloads(evidence);
+    if (Object.keys(evidenceFilePayloads).length > 0) {
+      evidenceFilePayloads = await fitEvidenceFilePayloadsUnderBudget(slim, evidenceFilePayloads);
+    }
+    const body: Record<string, unknown> = {};
+    if (slim) {
+      body.clientCase = slim;
+    }
     if (Object.keys(evidenceFilePayloads).length > 0) {
       body.evidenceFilePayloads = evidenceFilePayloads;
     }
