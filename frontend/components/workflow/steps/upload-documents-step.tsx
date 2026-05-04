@@ -9,6 +9,8 @@ type UploadItem = {
   notes: string;
   progress: number;
   lastFile?: File;
+  savedFilename?: string;
+  savedAt?: string;
   error?: string;
 };
 
@@ -158,6 +160,15 @@ export function UploadDocumentsStep({
             />
 
             <FilePreview file={item.lastFile} />
+
+            {item.savedFilename ? (
+              <div className="mt-3 rounded-lg bg-emerald-50 px-3 py-2 text-xs text-emerald-800 dark:bg-emerald-950/40 dark:text-emerald-200">
+                <p className="truncate font-medium">{item.savedFilename}</p>
+                <p className="mt-1 opacity-80">
+                  Uploaded {item.savedAt ? new Date(item.savedAt).toLocaleString() : 'previously'}
+                </p>
+              </div>
+            ) : null}
 
             {item.status === 'uploading' ? (
               <div className="mt-3">
