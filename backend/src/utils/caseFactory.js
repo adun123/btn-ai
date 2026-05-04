@@ -20,7 +20,6 @@ function createAssessmentCase(payload = {}) {
     applicant: payload.applicant ?? {},
     property: payload.property ?? {},
     notes: payload.notes ?? '',
-    location: null,
     evidence: [],
     extraction: null,
     manualExtractionEdits: {},
