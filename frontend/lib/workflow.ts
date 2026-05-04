@@ -2,10 +2,9 @@ import type { Channel, WorkflowStep } from '../types/ocr';
 
 export const stepItems: Array<{ id: WorkflowStep; title: string }> = [
   { id: 1, title: 'Create Case' },
-  { id: 2, title: 'Location Input' },
-  { id: 3, title: 'Upload Documents' },
-  { id: 4, title: 'Start OCR' },
-  { id: 5, title: 'OCR Result' },
+  { id: 2, title: 'Upload Documents' },
+  { id: 3, title: 'Start OCR' },
+  { id: 4, title: 'OCR Result' },
 ];
 
 export const docsByChannel: Record<Channel, string[]> = {
