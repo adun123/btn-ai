@@ -1,16 +1,28 @@
 import clsx from 'clsx';
+import { Trash2 } from 'lucide-react';
 import type { CaseRecord, Channel } from '../../../types/ocr';
 
 type CreateCaseStepProps = {
   selectedChannel: Channel;
   loading: boolean;
   recentCases?: CaseRecord[];
+  deletingCaseId?: string | null;
   onSelectChannel: (channel: Channel) => void;
   onStart: () => void;
   onOpenCase: (caseId: string) => void;
+  onDeleteCase: (caseId: string) => void;
 };
 
-export function CreateCaseStep({ selectedChannel, loading, recentCases = [], onSelectChannel, onStart, onOpenCase }: CreateCaseStepProps) {
+export function CreateCaseStep({
+  selectedChannel,
+  loading,
+  recentCases = [],
+  deletingCaseId,
+  onSelectChannel,
+  onStart,
+  onOpenCase,
+  onDeleteCase,
+}: CreateCaseStepProps) {
   return (
     <div className="space-y-5">
       <div>
@@ -61,17 +73,34 @@ export function CreateCaseStep({ selectedChannel, loading, recentCases = [], onS
           <p className="text-sm font-semibold text-slate-900 dark:text-slate-100">Recent Cases</p>
           <div className="mt-2 space-y-2 text-xs text-slate-600 dark:text-slate-300">
             {recentCases.slice(0, 5).map((item) => (
-              <button
+              <div
                 key={item.id}
-                type="button"
-                onClick={() => onOpenCase(item.id)}
-                className="flex w-full items-center justify-between rounded-lg bg-slate-50 px-2 py-1 text-left transition hover:bg-blue-50 dark:bg-slate-800 dark:hover:bg-slate-700"
+                className="flex items-center gap-2 rounded-lg bg-slate-50 px-2 py-1 transition hover:bg-blue-50 dark:bg-slate-800 dark:hover:bg-slate-700"
               >
-                <span>{item.id.slice(0, 8)}... - {item.channel}</span>
-                <span className="rounded-full bg-white px-2 py-0.5 text-[11px] font-medium capitalize text-slate-700 dark:bg-slate-900 dark:text-slate-200">
-                  {item.status.replaceAll('_', ' ')}
-                </span>
-              </button>
+                <button
+                  type="button"
+                  onClick={() => onOpenCase(item.id)}
+                  className="flex min-w-0 flex-1 items-center justify-between gap-3 text-left"
+                >
+                  <span className="truncate">{item.id.slice(0, 8)}... - {item.channel}</span>
+                  <span className="shrink-0 rounded-full bg-white px-2 py-0.5 text-[11px] font-medium capitalize text-slate-700 dark:bg-slate-900 dark:text-slate-200">
+                    {item.status.replaceAll('_', ' ')}
+                  </span>
+                </button>
+                <button
+                  type="button"
+                  aria-label={`Delete case ${item.id}`}
+                  title="Delete draft"
+                  disabled={deletingCaseId === item.id}
+                  onClick={(event) => {
+                    event.stopPropagation();
+                    onDeleteCase(item.id);
+                  }}
+                  className="rounded-md p-1 text-red-600 transition hover:bg-red-100 hover:text-red-700 disabled:cursor-not-allowed disabled:opacity-50 dark:text-red-300 dark:hover:bg-red-950/50 dark:hover:text-red-200"
+                >
+                  <Trash2 className="h-4 w-4" />
+                </button>
+              </div>
             ))}
           </div>
         </div>
