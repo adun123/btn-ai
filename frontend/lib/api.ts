@@ -2,10 +2,10 @@ import type { ApiEnvelope, ApiErrorShape, CaseRecord, Channel, EvidenceItem, Ext
 
 const defaultBackendUrl = 'http://localhost:4000';
 
-/** In-memory case data is lost between Vercel serverless instances; we keep a client snapshot to rehydrate. */
+/** Client snapshot for UI merge; cases + evidence bytes persist in Supabase on the server. */
 const CASE_SNAPSHOT_PREFIX = 'btn-ocr-case:';
-/** Per-evidence file bytes (base64) for OCR when the server instance does not hold the upload buffer. */
-const EVIDENCE_BIN_PREFIX = 'btn-ocr-ev:';
+/** Legacy sessionStorage keys from older builds; cleared on new case. */
+const LEGACY_EVIDENCE_BIN_PREFIX = 'btn-ocr-ev:';
 
 function normalizeBackendUrl(rawUrl: string): string {
   let normalized = rawUrl.trim();
@@ -163,84 +163,40 @@ function mergeCaseLists(server: CaseRecord[], local: CaseRecord[]): CaseRecord[]
   );
 }
 
+/** Smaller `clientCase` JSON (avoids huge audit arrays on Vercel). */
+function slimClientCaseForRehydration(snap: Record<string, unknown>): Record<string, unknown> {
+  return {
+    id: snap.id,
+    referenceNumber: snap.referenceNumber,
+    channel: snap.channel,
+    status: snap.status,
+    applicant: snap.applicant,
+    property: snap.property,
+    notes: snap.notes,
+    location: snap.location,
+    evidence: snap.evidence,
+    extraction: snap.extraction,
+    manualExtractionEdits: snap.manualExtractionEdits,
+    createdAt: snap.createdAt,
+    updatedAt: snap.updatedAt,
+    auditTrail: [],
+  };
+}
+
 function withClientCase(caseId: string, body: Record<string, unknown>): Record<string, unknown> {
   const snap = getCaseSnapshot(caseId);
   if (!snap) return body;
-  return { ...body, clientCase: snap };
+  return { ...body, clientCase: slimClientCaseForRehydration(snap) };
 }
 
-function fileToBase64(file: File): Promise<string> {
-  return new Promise((resolve, reject) => {
-    const reader = new FileReader();
-    reader.onload = () => {
-      const r = reader.result as string;
-      const base64 = r.includes(',') ? r.split(',')[1] || '' : r;
-      resolve(base64);
-    };
-    reader.onerror = () => reject(reader.error);
-    reader.readAsDataURL(file);
-  });
-}
-
-async function storeEvidenceBlobForNewUpload(
-  caseId: string,
-  documentType: string,
-  file: File,
-  serverCase: CaseRecord,
-): Promise<void> {
-  const prevSnap = getCaseSnapshot(caseId);
-  const prevEvidence = (prevSnap?.evidence as EvidenceItem[] | undefined) || [];
-  const prevIds = new Set(prevEvidence.map((e) => e.id));
-  const merged = mergeCaseRecords(prevSnap as CaseRecord | null, serverCase);
-  const added = (merged.evidence || []).filter((e) => !prevIds.has(e.id));
-  const match =
-    added.find((e) => e.documentType === documentType && e.filename === file.name) ||
-    added.find((e) => e.documentType === documentType) ||
-    added[added.length - 1];
-  if (!match) return;
-  try {
-    const base64Data = await fileToBase64(file);
-    sessionStorage.setItem(
-      `${EVIDENCE_BIN_PREFIX}${match.id}`,
-      JSON.stringify({
-        base64Data,
-        mimeType: file.type || 'application/octet-stream',
-      }),
-    );
-  } catch {
-    // quota exceeded — extraction may fail on another instance
-  }
-}
-
-function collectEvidenceFilePayloads(evidence: EvidenceItem[]): Record<string, { base64Data: string; mimeType: string }> {
-  const out: Record<string, { base64Data: string; mimeType: string }> = {};
-  if (typeof window === 'undefined') return out;
-  for (const item of evidence) {
-    try {
-      const raw = sessionStorage.getItem(`${EVIDENCE_BIN_PREFIX}${item.id}`);
-      if (!raw) continue;
-      const parsed = JSON.parse(raw) as { base64Data?: string; mimeType?: string };
-      if (parsed?.base64Data) {
-        out[item.id] = {
-          base64Data: parsed.base64Data,
-          mimeType: parsed.mimeType || 'application/octet-stream',
-        };
-      }
-    } catch {
-      // skip
-    }
-  }
-  return out;
-}
-
-/** Clear cached blobs (e.g. new workflow). Does not remove case JSON snapshots. */
+/** Clear legacy per-evidence session blobs. Does not remove case JSON snapshots. */
 export function clearAllEvidenceBlobs(): void {
   if (typeof window === 'undefined') return;
   try {
     const toRemove: string[] = [];
     for (let i = 0; i < sessionStorage.length; i += 1) {
       const key = sessionStorage.key(i);
-      if (key?.startsWith(EVIDENCE_BIN_PREFIX)) toRemove.push(key);
+      if (key?.startsWith(LEGACY_EVIDENCE_BIN_PREFIX)) toRemove.push(key);
     }
     toRemove.forEach((key) => sessionStorage.removeItem(key));
   } catch {
@@ -295,7 +251,7 @@ export const apiClient = {
       }
       const snap = getCaseSnapshot(caseId);
       if (snap) {
-        formData.append('clientCase', JSON.stringify(snap));
+        formData.append('clientCase', JSON.stringify(slimClientCaseForRehydration(snap)));
       }
 
       const xhr = new XMLHttpRequest();
@@ -313,15 +269,8 @@ export const apiClient = {
       xhr.onload = () => {
         const payload = xhr.response as ApiEnvelope<{ case: CaseRecord }> | ApiErrorShape | null;
         if (xhr.status >= 200 && xhr.status < 300 && payload && 'data' in payload) {
-          void (async () => {
-            try {
-              await storeEvidenceBlobForNewUpload(caseId, documentType, file, payload.data.case);
-            } catch {
-              // non-fatal
-            }
-            rememberCaseSnapshot(payload.data.case);
-            resolve(payload.data.case);
-          })();
+          rememberCaseSnapshot(payload.data.case);
+          resolve(payload.data.case);
           return;
         }
 
@@ -333,13 +282,9 @@ export const apiClient = {
     }),
   startExtraction: async (caseId: string) => {
     const snap = getCaseSnapshot(caseId) as CaseRecord | null;
-    const evidence = (snap?.evidence as EvidenceItem[] | undefined) || [];
-    const evidenceFilePayloads = collectEvidenceFilePayloads(evidence);
-    const body: Record<string, unknown> = {
-      ...withClientCase(caseId, {}),
-    };
-    if (Object.keys(evidenceFilePayloads).length > 0) {
-      body.evidenceFilePayloads = evidenceFilePayloads;
+    const body: Record<string, unknown> = {};
+    if (snap) {
+      body.clientCase = slimClientCaseForRehydration(snap);
     }
 
     const extraction = await request<ExtractionResult>(`/cases/${encodeURIComponent(caseId)}/extraction/start`, {

@@ -1,4 +1,5 @@
 const express = require('express');
+const { isSupabaseConfigured } = require('../../data/supabase');
 
 const router = express.Router();
 
@@ -19,7 +20,7 @@ router.get('/health', (req, res) => {
       status: 'ok',
       service: 'btn-kpr-house-assessment-backend',
       storageMode: 'supabase',
-      database: process.env.SUPABASE_URL ? 'supabase_url_present' : 'supabase_url_not_set',
+      database: isSupabaseConfigured() ? 'supabase_configured' : 'supabase_not_configured',
       aiProvider: process.env.GEMINI_API_KEY ? 'gemini_key_present' : 'gemini_key_not_set',
       supportedChannels: ['branch', 'bale'],
       extractionPipelines: {
