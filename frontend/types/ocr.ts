@@ -1,6 +1,6 @@
 export type Channel = 'branch' | 'bale';
 
-export type WorkflowStep = 1 | 2 | 3 | 4 | 5;
+export type WorkflowStep = 1 | 2 | 3 | 4;
 
 export type ApiEnvelope<T> = {
   success: boolean;
