@@ -41,6 +41,10 @@ function formatConfidence(value: number): string {
   return `${Math.round(value * 100)}%`;
 }
 
+function shouldHideField(documentType: string | undefined, fieldKey: string): boolean {
+  return documentType === 'npwp' && ['nik', 'kpp_registered'].includes(fieldKey);
+}
+
 export function OcrResultStep({
   extraction,
   loading,
@@ -49,24 +53,58 @@ export function OcrResultStep({
   onSaveManualEdits,
 }: OcrResultStepProps) {
   const [manualEdits, setManualEdits] = useState<Record<string, string>>({});
+  const visibleDocuments = useMemo(
+    () =>
+      (extraction?.documents || []).map((doc) => ({
+        ...doc,
+        fields: doc.fields.filter((field) => !shouldHideField(doc.documentType, field.key)),
+      })),
+    [extraction?.documents],
+  );
+  const visibleGlobalFields = useMemo(
+    () =>
+      (extraction?.fields || []).filter((field) => {
+        const [documentType, fieldKey] = field.key.split('.', 2);
+        return !shouldHideField(fieldKey ? documentType : undefined, fieldKey || field.key);
+      }),
+    [extraction?.fields],
+  );
 
   const originalValues = useMemo(() => {
     const map: Record<string, string> = {};
     if (!extraction) return map;
-    (extraction.documents || []).forEach((doc) => {
+    visibleDocuments.forEach((doc) => {
       doc.fields.forEach((field) => {
         map[`${doc.evidenceId}:${field.key}`] = field.value || '';
       });
     });
-    extraction.fields.forEach((field) => {
+    visibleGlobalFields.forEach((field) => {
       map[`global:${field.key}`] = field.value || '';
     });
     return map;
-  }, [extraction]);
+  }, [extraction, visibleDocuments, visibleGlobalFields]);
 
   useEffect(() => {
     setManualEdits(persistedManualEdits || {});
   }, [persistedManualEdits, extraction?.generatedAt]);
+
+  const documentWarnings = useMemo(
+    () =>
+      visibleDocuments.flatMap((doc) =>
+        doc.warnings.map((warning) => ({
+          key: `${doc.evidenceId}:${warning}`,
+          warning,
+          documentType: doc.documentType,
+          filename: doc.filename,
+        })),
+      ),
+    [visibleDocuments],
+  );
+
+  const globalWarnings = useMemo(() => {
+    const documentWarningSet = new Set(documentWarnings.map((item) => item.warning));
+    return (extraction?.warnings || []).filter((warning) => !documentWarningSet.has(warning));
+  }, [documentWarnings, extraction?.warnings]);
 
   const resolveValue = (key: string, fallback: string | null) => (manualEdits[key] ?? fallback ?? '');
   const isEdited = (key: string) => (manualEdits[key] ?? originalValues[key] ?? '') !== (originalValues[key] ?? '');
@@ -88,10 +126,10 @@ export function OcrResultStep({
     );
   }
 
-  const fieldsNeedingReview = extraction.fields.filter((field) => field.reviewRequired).length;
+  const fieldsNeedingReview = visibleGlobalFields.filter((field) => field.reviewRequired).length;
   const averageConfidence =
-    extraction.fields.length > 0
-      ? Math.round((extraction.fields.reduce((sum, field) => sum + field.confidence, 0) / extraction.fields.length) * 100)
+    visibleGlobalFields.length > 0
+      ? Math.round((visibleGlobalFields.reduce((sum, field) => sum + field.confidence, 0) / visibleGlobalFields.length) * 100)
       : 0;
 
   return (
@@ -141,7 +179,7 @@ export function OcrResultStep({
           <h3 className="text-base font-semibold text-slate-900 dark:text-slate-100">Extraction Tables</h3>
           <div className="flex items-center gap-2">
             <span className="rounded-full bg-slate-100 px-2.5 py-1 text-xs font-medium text-slate-600 dark:bg-slate-800 dark:text-slate-300">
-              {(extraction.documents || []).length} dokumen
+              {visibleDocuments.length} dokumen
             </span>
             <button
               type="button"
@@ -153,9 +191,9 @@ export function OcrResultStep({
             </button>
           </div>
         </div>
-        {(extraction.documents || []).length ? (
+        {visibleDocuments.length ? (
           <div className="mt-4 space-y-4">
-            {(extraction.documents || []).map((doc) => (
+            {visibleDocuments.map((doc) => (
               <div key={doc.evidenceId} className="overflow-hidden rounded-xl border border-blue-100 dark:border-blue-900">
                 <div className="flex flex-wrap items-center justify-between gap-2 border-b border-blue-100 bg-blue-50 px-4 py-3 dark:border-blue-900 dark:bg-blue-950/30">
                   <p className="text-sm font-semibold text-slate-900 dark:text-slate-100">{getDocumentLabel(doc.documentType)}</p>
@@ -220,7 +258,7 @@ export function OcrResultStep({
                 </tr>
               </thead>
               <tbody>
-                {extraction.fields.map((field) => (
+                {visibleGlobalFields.map((field) => (
                   <tr key={field.key} className="border-t border-slate-100 dark:border-slate-800">
                     <td className="px-4 py-2 font-medium text-slate-900 dark:text-slate-100">{formatFieldLabel(field.key)}</td>
                     <td className="px-4 py-2 text-slate-700 dark:text-slate-200">
@@ -252,14 +290,25 @@ export function OcrResultStep({
         )}
       </section>
 
-      {extraction.warnings.length ? (
+      {globalWarnings.length || documentWarnings.length ? (
         <section className="rounded-2xl border border-amber-200 bg-amber-50 p-5 dark:border-amber-900 dark:bg-amber-950/40">
           <h3 className="text-base font-semibold text-amber-900 dark:text-amber-200">Warnings</h3>
-          <ul className="mt-2 list-disc space-y-1 pl-5 text-sm text-blue-800 dark:text-blue-200">
-            {extraction.warnings.map((warning) => (
-              <li key={warning}>{warning}</li>
+          <div className="mt-3 space-y-3 text-sm text-blue-800 dark:text-blue-200">
+            {documentWarnings.map((item) => (
+              <div key={item.key} className="rounded-xl border border-amber-200/80 bg-white/70 px-3 py-2 dark:border-amber-900/70 dark:bg-slate-950/20">
+                <p>{item.warning}</p>
+                <p className="mt-1 text-xs text-amber-900 dark:text-amber-200">
+                  Referred file: {getDocumentLabel(item.documentType)} - {item.filename}
+                </p>
+              </div>
             ))}
-          </ul>
+            {globalWarnings.map((warning) => (
+              <div key={warning} className="rounded-xl border border-amber-200/80 bg-white/70 px-3 py-2 dark:border-amber-900/70 dark:bg-slate-950/20">
+                <p>{warning}</p>
+                <p className="mt-1 text-xs text-amber-900 dark:text-amber-200">Referred file: General extraction result</p>
+              </div>
+            ))}
+          </div>
         </section>
       ) : null}
     </div>
