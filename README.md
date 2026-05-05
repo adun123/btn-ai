@@ -1,102 +1,201 @@
-# BTN AI - KPR House Assessment OCR Workflow
-# TESST
-BTN AI is a proof-of-concept application for a KPR house assessment workflow. It combines a Next.js frontend with an Express backend for case creation, property location capture, document upload, and OCR extraction for mortgage onboarding documents.
+# BTN AI - KPR OCR Submission Workflow
 
-The project currently supports two intake channels:
+BTN AI adalah proof of concept (PoC) untuk membantu proses awal pengajuan KPR BTN melalui workflow berbasis case. Aplikasi ini menggabungkan frontend Next.js, backend Express, Supabase Postgres, dan OCR berbasis Gemini untuk membaca dokumen onboarding KPR.
 
-- `bale` - digital/mobile-style document intake for KTP, KK, salary slip, NPWP, and bank statement documents.
-- `branch` - branch-assisted intake with a placeholder BTN block-form OCR pipeline.
+Dokumen ini ditulis agar mudah dipahami oleh PM, engineer, dan stakeholder demo.
 
-## Project Filepath Tree
+## Ringkasan Produk
 
-Generated/build folders such as `node_modules/` and `.next/` are intentionally omitted.
+Tujuan utama proyek ini adalah mempercepat proses intake dokumen KPR dengan alur yang lebih terstruktur:
+
+1. Membuat case pengajuan KPR.
+2. Mengunggah dokumen pendukung.
+3. Menjalankan OCR untuk mengekstrak data penting.
+4. Menampilkan hasil ekstraksi agar bisa direview dan dikoreksi manual.
+5. Menyimpan riwayat case, evidence, dan hasil OCR untuk kebutuhan audit/demo.
+
+## Status Saat Ini
+
+| Area | Status | Catatan |
+| --- | --- | --- |
+| Frontend workflow | Sudah tersedia | UI 4 langkah: create case, upload documents, start OCR, OCR result. |
+| Backend API | Sudah tersedia | Express API dengan Swagger/OpenAPI. |
+| Persistence | Sudah tersedia | Data disimpan di Supabase Postgres. |
+| Bale OCR | Sudah tersedia | Menggunakan Gemini OCR untuk beberapa tipe dokumen. |
+| Branch OCR | Placeholder | Struktur pipeline ada, tetapi hasil OCR masih dummy. |
+| Automated test | Belum tersedia | Script backend test saat ini hanya placeholder. |
+
+## Channel Intake
+
+Aplikasi mendukung dua channel intake:
+
+| Channel | Tujuan | Dokumen yang didukung | Status OCR |
+| --- | --- | --- | --- |
+| `bale` | Intake digital/mobile-style | KTP, KK, NPWP, slip gaji, rekening koran | Real OCR via Gemini |
+| `branch` | Intake dibantu kantor cabang | Application form, supporting document, salary slip, other | Placeholder |
+
+## User Flow Utama
 
 ```text
-btn-ai/
+Create Case -> Upload Documents -> Start OCR -> Review OCR Result
+```
+
+Penjelasan singkat:
+
+1. User memilih channel `bale` atau `branch`.
+2. Frontend membuat case baru melalui backend.
+3. User mengunggah dokumen yang sesuai dengan channel.
+4. Backend menyimpan file dan metadata evidence di Supabase.
+5. Untuk channel `bale`, backend mengirim dokumen ke Gemini OCR.
+6. Hasil OCR dikembalikan ke frontend.
+7. User dapat mereview dan mengedit hasil ekstraksi secara manual.
+
+## Arsitektur Singkat
+
+```text
+Frontend Next.js
+    |
+    | REST API
+    v
+Backend Express
+    |
+    |-- Supabase Postgres: cases dan evidence_documents
+    |-- Gemini OCR: ekstraksi dokumen channel bale
+    |-- Swagger/OpenAPI: dokumentasi API
+```
+
+Pembagian tanggung jawab:
+
+- `frontend/` menangani UI, workflow state, upload progress, dan tampilan hasil OCR.
+- `backend/` menangani API, validasi channel/dokumen, upload evidence, persistence, dan integrasi OCR.
+- `docs/` menyimpan blueprint arsitektur dan dokumen referensi.
+- `api/` menyediakan entrypoint serverless untuk deployment yang membutuhkan function wrapper.
+
+## Struktur Folder
+
+Generated/build folders seperti `node_modules/`, `.next/`, dan `tsconfig.tsbuildinfo` tidak perlu dibaca untuk memahami produk.
+
+```text
+OCR/
 ├── README.md
 ├── .gitignore
 ├── api/
-│   └── <empty root API placeholder>
+│   └── index.js
 ├── backend/
 │   ├── README.md
 │   ├── .env.example
 │   ├── package.json
-│   ├── package-lock.json
-│   ├── api/
-│   │   └── index.js
 │   ├── src/
 │   │   ├── app.js
 │   │   ├── server.js
 │   │   ├── data/
-│   │   │   ├── case-mappers.js
-│   │   │   └── supabase.js
 │   │   ├── middlewares/
-│   │   │   └── errorHandler.js
 │   │   ├── modules/
 │   │   │   ├── assessment-core/
-│   │   │   │   ├── case.repository.js
-│   │   │   │   ├── case.routes.js
-│   │   │   │   └── case.service.js
 │   │   │   ├── evidence-documents/
-│   │   │   │   ├── evidence.repository.js
-│   │   │   │   ├── evidence.routes.js
-│   │   │   │   └── evidence.service.js
 │   │   │   ├── extraction/
-│   │   │   │   ├── extraction.routes.js
-│   │   │   │   └── extraction.service.js
 │   │   │   ├── health/
-│   │   │   │   └── health.routes.js
-│   │   │   ├── property-location/
-│   │   │   │   ├── location.routes.js
-│   │   │   │   └── location.service.js
 │   │   │   └── provider-gateway/
-│   │   │       └── gemini-ocr.service.js
 │   │   ├── openapi/
-│   │   │   └── spec.js
 │   │   └── utils/
-│   │       ├── caseFactory.js
-│   │       ├── clientCaseSnapshot.js
-│   │       └── httpError.js
 │   └── supabase/
 │       └── migrations/
-│           └── 20260504_init_btn_assessment_persistence.sql
 ├── docs/
 │   ├── 2026-04-29-arch-house-collateral-assessment-blueprint.md
-│   ├── 2026-04-29-arch-house-collateral-assessment-blueprint.docx
-│   ├── 2026-04-29-arch-house-collateral-assessment-blueprint.pdf
 │   ├── FORM-KPR-BTN.pdf
 │   ├── pdf-print.css
 │   └── doc test/
 └── frontend/
     ├── .env.example
     ├── package.json
-    ├── package-lock.json
-    ├── next.config.ts
-    ├── postcss.config.mjs
-    ├── tsconfig.json
     ├── app/
-    │   ├── globals.css
-    │   ├── layout.tsx
-    │   ├── page.module.css
-    │   └── page.tsx
     ├── components/
-    │   ├── backend-status.module.css
-    │   ├── backend-status.tsx
-    │   ├── providers/
-    │   │   └── query-provider.tsx
-    │   └── workflow/
-    │       ├── ocr-workflow-page.tsx
-    │       ├── stepper.tsx
-    │       ├── summary-panel.tsx
-    │       └── steps/
     ├── lib/
-    │   ├── api.ts
-    │   ├── document-labels.ts
-    │   └── workflow.ts
+    ├── public/
     ├── store/
-    │   └── workflow-store.ts
     └── types/
-        └── ocr.ts
+```
+
+## Penjelasan Folder dan File Penting
+
+### Root
+
+| Path | Fungsi |
+| --- | --- |
+| `README.md` | Dokumentasi utama proyek. |
+| `.gitignore` | Daftar file/folder yang tidak masuk git. |
+| `api/index.js` | Wrapper serverless yang meneruskan request ke backend Express app. |
+
+### Backend
+
+| Path | Fungsi |
+| --- | --- |
+| `backend/src/app.js` | Wiring Express app, CORS, Swagger, route API, dan error handler. |
+| `backend/src/server.js` | Entry point untuk menjalankan backend lokal. |
+| `backend/src/modules/assessment-core/` | Modul lifecycle case: create, list, detail, patch, status, delete. |
+| `backend/src/modules/evidence-documents/` | Modul upload dokumen, validasi tipe dokumen, dan penyimpanan evidence. |
+| `backend/src/modules/extraction/` | Modul orkestrasi OCR untuk channel `bale` dan `branch`. |
+| `backend/src/modules/provider-gateway/` | Integrasi provider eksternal, saat ini Gemini OCR. |
+| `backend/src/data/` | Koneksi Supabase dan mapper data database ke format aplikasi. |
+| `backend/src/openapi/spec.js` | Konfigurasi Swagger/OpenAPI. |
+| `backend/supabase/migrations/` | Snapshot skema database Supabase. |
+
+### Frontend
+
+| Path | Fungsi |
+| --- | --- |
+| `frontend/app/page.tsx` | Halaman utama yang memuat workflow OCR. |
+| `frontend/app/layout.tsx` | Layout Next.js, metadata, dan React Query provider. |
+| `frontend/components/workflow/ocr-workflow-page.tsx` | Orkestrator utama UI workflow 4 langkah. |
+| `frontend/components/workflow/steps/` | Komponen per langkah: create case, upload, proses OCR, hasil OCR. |
+| `frontend/components/workflow/summary-panel.tsx` | Panel ringkasan case, dokumen, status, dan notes. |
+| `frontend/lib/api.ts` | Client API untuk komunikasi frontend ke backend. |
+| `frontend/lib/workflow.ts` | Definisi langkah workflow dan daftar dokumen per channel. |
+| `frontend/store/workflow-store.ts` | State workflow yang dipersist di `sessionStorage`. |
+| `frontend/types/ocr.ts` | TypeScript types untuk case, evidence, dan hasil OCR. |
+
+### Docs
+
+| Path | Fungsi |
+| --- | --- |
+| `docs/2026-04-29-arch-house-collateral-assessment-blueprint.md` | Blueprint arsitektur jangka panjang untuk collateral assessment. |
+| `docs/FORM-KPR-BTN.pdf` | Referensi form KPR BTN. |
+| `docs/doc test/` | Contoh dokumen/gambar untuk pengujian OCR. |
+
+## Data yang Disimpan
+
+Saat ini database Supabase memiliki dua tabel utama:
+
+| Tabel | Isi |
+| --- | --- |
+| `public.cases` | Data case, channel, status, applicant/property JSON, notes, hasil extraction, manual edits, audit trail. |
+| `public.evidence_documents` | Metadata dokumen dan payload file base64 untuk PoC. |
+
+Catatan: untuk production, file sebaiknya dipindahkan ke object storage seperti Supabase Storage. Database cukup menyimpan metadata dan reference URL.
+
+## Endpoint Utama
+
+Backend tersedia di `http://localhost:4000` saat dijalankan lokal.
+
+```text
+GET    /health
+GET    /api/health
+POST   /api/cases
+GET    /api/cases
+GET    /api/cases/:caseId
+PATCH  /api/cases/:caseId
+DELETE /api/cases/:caseId
+POST   /api/cases/:caseId/status
+POST   /api/cases/:caseId/evidence
+GET    /api/cases/:caseId/evidence
+POST   /api/cases/:caseId/extraction/start
+GET    /api/cases/:caseId/extraction
+```
+
+Dokumentasi API interaktif tersedia di:
+
+```text
+http://localhost:4000/api-docs
 ```
 
 ## Tech Stack
@@ -114,32 +213,23 @@ btn-ai/
 
 - Node.js
 - Express 5
-- Multer for multipart file uploads
+- Multer untuk multipart file upload
 - Swagger/OpenAPI documentation
-- Supabase Postgres persistence
-- Gemini OCR through `@google/generative-ai`
+- Supabase Postgres
+- Gemini OCR melalui `@google/generative-ai`
 
-## Prerequisites
-
-Install these before running the project:
-
-- Node.js 20 or newer
-- npm
-- Supabase project credentials
-- Gemini API key for Bale OCR extraction
-
-## Environment Setup
-
-Create local environment files from the examples.
+## Setup Environment
 
 ### Backend
+
+Buat file env lokal dari contoh:
 
 ```bash
 cd backend
 cp .env.example .env
 ```
 
-Fill in `backend/.env`:
+Isi `backend/.env`:
 
 ```env
 PORT=4000
@@ -150,108 +240,62 @@ GEMINI_MODEL=gemini-2.5-flash
 CORS_ORIGIN=http://localhost:3000
 ```
 
-Use the Supabase service role key only on the backend. Do not expose it in the frontend.
+Jangan expose `SUPABASE_SERVICE_ROLE_KEY` ke frontend.
 
 ### Frontend
+
+Buat file env lokal dari contoh:
 
 ```bash
 cd frontend
 cp .env.example .env
 ```
 
-Fill in `frontend/.env`:
+Isi `frontend/.env`:
 
 ```env
 NEXT_PUBLIC_BACKEND_URL=http://localhost:4000
 ```
 
-## Supabase Database Setup
+## Cara Menjalankan Lokal
 
-The connected Supabase project has already been migrated through MCP. The tracked schema snapshot is available at:
-
-```text
-backend/supabase/migrations/20260504_init_btn_assessment_persistence.sql
-```
-
-Current database tables:
-
-- `public.cases`
-- `public.evidence_documents`
-
-Both tables have Row Level Security enabled. The backend is expected to access them using `SUPABASE_SERVICE_ROLE_KEY`.
-
-For this PoC, uploaded file payloads are stored as base64 in Postgres. A production-ready version should move binary files to Supabase Storage and keep only metadata/database references in Postgres.
-
-## Installation
-
-Install backend dependencies:
+Install dependency backend:
 
 ```bash
 cd backend
 npm install
 ```
 
-Install frontend dependencies:
+Jalankan backend:
 
 ```bash
-cd frontend
-npm install
-```
-
-## Running Locally
-
-Start the backend API:
-
-```bash
-cd backend
 npm start
 ```
 
-Backend URLs:
-
-- API base: `http://localhost:4000/api`
-- Health check: `http://localhost:4000/health`
-- Swagger UI: `http://localhost:4000/api-docs`
-- OpenAPI JSON: `http://localhost:4000/openapi.json`
-
-Start the frontend app in another terminal:
+Install dependency frontend:
 
 ```bash
 cd frontend
+npm install
+```
+
+Jalankan frontend:
+
+```bash
 npm run dev
 ```
 
-Frontend URL:
+URL lokal:
 
-```text
-http://localhost:3000
-```
+| Service | URL |
+| --- | --- |
+| Frontend | `http://localhost:3000` |
+| Backend API | `http://localhost:4000/api` |
+| Health Check | `http://localhost:4000/health` |
+| Swagger UI | `http://localhost:4000/api-docs` |
+| OpenAPI JSON | `http://localhost:4000/openapi.json` |
 
-## Main Workflow
-
-1. Create an assessment case.
-2. Save property location details.
-3. Upload required documents.
-4. Start OCR extraction.
-5. Review extracted OCR fields.
-
-Main backend endpoints:
-
-```text
-GET  /health
-POST /api/cases
-GET  /api/cases
-GET  /api/cases/:caseId
-PATCH /api/cases/:caseId
-POST /api/cases/:caseId/status
-POST /api/cases/:caseId/location
-POST /api/cases/:caseId/evidence
-GET  /api/cases/:caseId/evidence
-POST /api/cases/:caseId/extraction/start
-GET  /api/cases/:caseId/extraction
-```
-
-## Verification Commands
+## Verifikasi
 
 Backend:
 
@@ -269,9 +313,33 @@ npm run typecheck
 npm run build
 ```
 
-## Notes for Development
+Catatan: `npm test` di backend saat ini belum menjalankan automated test nyata.
 
-- The `branch` channel still uses a placeholder extraction response.
-- The `bale` channel calls Gemini OCR and requires `GEMINI_API_KEY`.
-- Supabase credentials are backend-only secrets.
-- Keep generated folders such as `node_modules/`, `.next/`, and `tsconfig.tsbuildinfo` out of documentation and commits unless intentionally needed.
+## Batasan PoC
+
+- `branch` OCR masih placeholder.
+- OCR `bale` membutuhkan `GEMINI_API_KEY` yang valid.
+- File upload saat ini disimpan sebagai base64 di Postgres untuk kemudahan PoC.
+- Belum ada background worker; OCR diproses langsung saat endpoint extraction dipanggil.
+- Belum ada authentication/authorization user-facing.
+- Belum ada automated test coverage yang lengkap.
+
+## Catatan untuk PM
+
+Yang sudah bisa didemokan:
+
+- Membuat case baru.
+- Memilih channel intake.
+- Upload dokumen sesuai channel.
+- Menjalankan OCR untuk channel `bale`.
+- Melihat hasil OCR dan field confidence.
+- Mengedit hasil OCR secara manual.
+- Melihat daftar case terbaru.
+
+Yang masih perlu diputuskan untuk tahap berikutnya:
+
+- Apakah `branch` akan memakai OCR template BTN block form sungguhan.
+- Apakah file akan dipindahkan ke Supabase Storage/object storage.
+- Apakah perlu role user, reviewer, dan audit approval flow.
+- Apakah workflow akan diperluas ke appraisal properti, valuation, dan loan simulation.
+- Apakah OCR perlu dipindahkan ke async job agar lebih stabil untuk file besar/banyak.
