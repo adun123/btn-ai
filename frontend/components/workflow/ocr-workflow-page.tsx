@@ -398,38 +398,52 @@ export function OcrWorkflowPage() {
   };
 
   return (
-    <main className="mx-auto max-w-6xl space-y-5 px-4 py-4 pb-32 sm:px-6 lg:pb-8 lg:py-8">
-      <div className="glass-card rounded-2xl border border-blue-200 bg-blue-50/90 p-3 text-sm text-blue-900 dark:border-blue-800 dark:bg-blue-950/70 dark:text-blue-100">
+    <main className="mx-auto max-w-6xl space-y-4 px-3 py-3 pb-32 sm:space-y-5 sm:px-6 sm:py-6 lg:pb-8 lg:py-8">
+      <div className="glass-card rounded-xl border border-blue-200 bg-blue-50/90 p-3 text-xs text-blue-900 dark:border-blue-800 dark:bg-blue-950/70 dark:text-blue-100 sm:rounded-2xl sm:text-sm">
         Data will be lost if server restarts
       </div>
-
-      <header className="space-y-4 border-b pb-6" style={{ borderColor: 'var(--border)' }}>
+  
+      <header
+        className="space-y-4 border-b pb-4 sm:pb-6"
+        style={{ borderColor: 'var(--border)' }}
+      >
         <div className="flex flex-col gap-4 sm:flex-row sm:items-start sm:justify-between">
-          <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:gap-5">
-            <BtnLogo height={44} className="max-h-11" />
-            <div className="space-y-1">
-              <p className="text-xs font-semibold uppercase tracking-wider text-blue-700 dark:text-blue-300">OCR KPR Submission</p>
-              <h1 className="text-2xl font-semibold text-slate-900 dark:text-slate-100 sm:text-3xl">Document Intelligence</h1>
+          <div className="flex items-center gap-3 sm:gap-5">
+            <BtnLogo
+              height={44}
+              className="h-auto max-h-9 w-auto max-w-[150px] object-contain sm:max-h-11 sm:max-w-none"
+            />
+  
+            <div className="min-w-0 space-y-0.5 sm:space-y-1">
+              <p className="truncate text-[10px] font-semibold uppercase tracking-wider text-blue-700 dark:text-blue-300 sm:text-xs">
+                OCR KPR Submission
+              </p>
+              <h1 className="text-xl font-semibold leading-tight text-slate-900 dark:text-slate-100 sm:text-3xl">
+                Document Intelligence
+              </h1>
             </div>
           </div>
+  
           <button
             type="button"
             onClick={onStartNewFlow}
-            className="shrink-0 self-start rounded-lg border border-blue-200 bg-white px-3 py-1.5 text-xs font-semibold text-blue-900 transition hover:bg-blue-50 dark:border-blue-900 dark:bg-slate-900 dark:text-blue-200 dark:hover:bg-slate-800 sm:self-center"
+            className="w-full rounded-lg border border-blue-200 bg-white px-3 py-2 text-xs font-semibold text-blue-900 transition hover:bg-blue-50 dark:border-blue-900 dark:bg-slate-900 dark:text-blue-200 dark:hover:bg-slate-800 sm:w-auto sm:shrink-0 sm:self-center sm:py-1.5"
           >
             Restart from beginning
           </button>
         </div>
       </header>
-
+  
       <Stepper currentStep={currentStep} />
-
+  
       {globalError ? (
-        <div className="rounded-xl border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-700 dark:border-red-900 dark:bg-red-950/60 dark:text-red-200">{globalError}</div>
+        <div className="rounded-xl border border-red-200 bg-red-50 px-3 py-3 text-sm text-red-700 dark:border-red-900 dark:bg-red-950/60 dark:text-red-200 sm:px-4">
+          {globalError}
+        </div>
       ) : null}
-
-      <section className="grid gap-5 lg:grid-cols-[1.35fr_0.65fr]">
-        <div className="glass-card min-h-[440px] p-5 transition-all duration-300">
+  
+      <section className="grid gap-4 sm:gap-5 lg:grid-cols-[1.35fr_0.65fr]">
+        <div className="glass-card min-h-[360px] p-4 transition-all duration-300 sm:min-h-[440px] sm:p-5">
           {canGoBack ? (
             <div className="mb-4 hidden lg:flex">
               <button
@@ -441,32 +455,47 @@ export function OcrWorkflowPage() {
               </button>
             </div>
           ) : null}
+  
           {stepView[currentStep]}
         </div>
-        <SummaryPanel
-          caseId={caseId}
-          channel={channel}
-          caseData={summaryCaseData}
-          extraction={extractionData || caseQuery.data?.extraction}
-          loading={caseQuery.isLoading}
-          notesDraft={notesDraft}
-          notesSaving={saveCaseNotes.isPending}
-          onNotesChange={setNotesDraft}
-          onSaveNotes={() => saveCaseNotes.mutate(notesDraft)}
-        />
+  
+        <div className="min-w-0">
+          <SummaryPanel
+            caseId={caseId}
+            channel={channel}
+            caseData={summaryCaseData}
+            extraction={extractionData || caseQuery.data?.extraction}
+            loading={caseQuery.isLoading}
+            notesDraft={notesDraft}
+            notesSaving={saveCaseNotes.isPending}
+            onNotesChange={setNotesDraft}
+            onSaveNotes={() => saveCaseNotes.mutate(notesDraft)}
+          />
+        </div>
       </section>
+  
       {currentStep === 2 && assistantOpen ? (
-        <div className="fixed bottom-24 right-4 z-20 w-[calc(100%-2rem)] max-w-xs rounded-2xl border border-blue-200 bg-white p-4 shadow-xl dark:border-blue-900 dark:bg-slate-900 lg:bottom-24 lg:max-w-sm">
-          <div className="mb-2 flex items-center justify-between">
-            <p className="text-sm font-semibold text-blue-900 dark:text-blue-200">AI Upload Assistant</p>
-            <button type="button" onClick={() => setAssistantOpen(false)} className="text-slate-500 dark:text-slate-300">
+        <div className="fixed inset-x-3 bottom-24 z-20 rounded-2xl border border-blue-200 bg-white p-4 shadow-xl dark:border-blue-900 dark:bg-slate-900 sm:inset-x-auto sm:right-4 sm:w-[calc(100%-2rem)] sm:max-w-xs lg:bottom-24 lg:max-w-sm">
+          <div className="mb-2 flex items-center justify-between gap-3">
+            <p className="text-sm font-semibold text-blue-900 dark:text-blue-200">
+              AI Upload Assistant
+            </p>
+            <button
+              type="button"
+              onClick={() => setAssistantOpen(false)}
+              className="shrink-0 text-slate-500 dark:text-slate-300"
+            >
               <X className="h-4 w-4" />
             </button>
           </div>
+  
           <div className="space-y-2 text-xs">
             {issueItems.length > 0 ? (
               issueItems.map((item) => (
-                <p key={item.documentType} className="rounded-lg bg-red-50 px-2 py-1 text-red-700 dark:bg-red-950/40 dark:text-red-200">
+                <p
+                  key={item.documentType}
+                  className="rounded-lg bg-red-50 px-2 py-1 text-red-700 dark:bg-red-950/40 dark:text-red-200"
+                >
                   {getDocumentLabel(item.documentType)}: {item.error || 'Upload issue detected.'}
                 </p>
               ))
@@ -475,6 +504,7 @@ export function OcrWorkflowPage() {
                 Great, no upload issue detected.
               </p>
             )}
+  
             <div className="rounded-lg bg-blue-50 px-2 py-1 text-blue-800 dark:bg-blue-950/40 dark:text-blue-200">
               <p>Accepted formats: JPG, PNG, WEBP, PDF</p>
               <p>Max size: 10MB</p>
@@ -483,7 +513,7 @@ export function OcrWorkflowPage() {
           </div>
         </div>
       ) : null}
-
+  
       <div className="hidden items-center gap-3 lg:flex">
         {currentStep === 2 ? (
           <button
@@ -496,12 +526,12 @@ export function OcrWorkflowPage() {
           </button>
         ) : null}
       </div>
-
+  
       <div
-   className="fixed inset-x-0 bottom-0 z-10 border-t border-blue-100 bg-white/85 px-3 pt-3 backdrop-blur dark:border-blue-900 dark:bg-slate-950/80 lg:hidden"
-   style={{ paddingBottom: 'max(0.75rem, env(safe-area-inset-bottom))' }}
- >
-        <div className="grid grid-cols-2 gap-2">
+        className="fixed inset-x-0 bottom-0 z-10 border-t border-blue-100 bg-white/90 px-3 pt-3 backdrop-blur dark:border-blue-900 dark:bg-slate-950/85 lg:hidden"
+        style={{ paddingBottom: 'max(0.75rem, env(safe-area-inset-bottom))' }}
+      >
+        <div className="mx-auto grid max-w-md grid-cols-2 gap-2">
           <button
             type="button"
             onClick={() => canGoBack && setStep((currentStep - 1) as WorkflowStep)}
@@ -510,6 +540,7 @@ export function OcrWorkflowPage() {
           >
             Back
           </button>
+  
           <button
             type="button"
             onClick={() => {
@@ -523,21 +554,26 @@ export function OcrWorkflowPage() {
           </button>
         </div>
       </div>
-
+  
       {currentStep === 2 ? (
         <button
           type="button"
           onClick={() => setAssistantOpen((prev) => !prev)}
-          className={`fixed right-4 z-20 inline-flex items-center gap-2 rounded-full px-4 py-3 text-sm font-semibold text-white shadow-lg transition ${
-            issueItems.length > 0 ? 'bottom-20 bg-red-600 hover:bg-red-500 lg:bottom-6' : 'bottom-20 bg-blue-700 hover:bg-blue-600 lg:bottom-6'
+          className={`fixed right-3 z-20 inline-flex items-center gap-2 rounded-full px-4 py-3 text-sm font-semibold text-white shadow-lg transition sm:right-4 ${
+            issueItems.length > 0
+              ? 'bottom-24 bg-red-600 hover:bg-red-500 lg:bottom-6'
+              : 'bottom-24 bg-blue-700 hover:bg-blue-600 lg:bottom-6'
           }`}
         >
           {issueItems.length > 0 ? <CircleAlert className="h-4 w-4" /> : <Bot className="h-4 w-4" />}
-          AI Helper{issueItems.length > 0 ? ` (${issueItems.length})` : ''}
+          <span className="hidden xs:inline">
+            AI Helper{issueItems.length > 0 ? ` (${issueItems.length})` : ''}
+          </span>
+          <span className="xs:hidden">
+            AI{issueItems.length > 0 ? ` (${issueItems.length})` : ''}
+          </span>
         </button>
       ) : null}
-
-
     </main>
   );
 }
