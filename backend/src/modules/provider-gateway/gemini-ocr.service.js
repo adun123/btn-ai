@@ -5,10 +5,15 @@ const DEFAULT_MODEL = process.env.GEMINI_MODEL || 'gemini-3-flash-preview';
 
 const DOCUMENT_FIELD_TEMPLATES = {
   ktp: ['nik', 'full_name', 'birth_place', 'birth_date', 'address', 'rt_rw', 'kelurahan', 'kecamatan', 'religion', 'marital_status', 'occupation'],
-  kk: ['nomor_kk', 'kepala_keluarga', 'alamat', 'rt_rw', 'desa_kelurahan', 'kecamatan', 'kabupaten_kota', 'provinsi', 'members'],
+  kk: ['nomor_kk', 'kepala_keluarga', 'alamat', 'rt_rw', 'desa_kelurahan', 'kecamatan', 'kabupaten_kota', 'provinsi'],
   slip_gaji: ['employee_name', 'company_name', 'period', 'position', 'gross_income', 'net_income', 'deductions'],
   npwp: ['npwp_number', 'registered_name', 'address', 'effective_date'],
-  rekening_koran: ['account_holder_name', 'bank_name', 'account_number', 'statement_period', 'opening_balance', 'closing_balance', 'transactions'],
+  rekening_koran: ['account_holder_name', 'bank_name', 'account_number', 'statement_period', 'opening_balance', 'closing_balance'],
+};
+
+const BLOCKED_NESTED_FIELDS = {
+  kk: new Set(['members']),
+  rekening_koran: new Set(['transactions']),
 };
 
 function getModel() {
@@ -30,6 +35,18 @@ function getModel() {
 
 function sleep(ms) {
   return new Promise((resolve) => setTimeout(resolve, ms));
+}
+
+function normalizeFieldValue(value) {
+  if (value == null) {
+    return null;
+  }
+
+  if (Array.isArray(value) || typeof value === 'object') {
+    return undefined;
+  }
+
+  return String(value);
 }
 
 function buildPrompt(documentType) {
@@ -68,18 +85,36 @@ Rules:
 }
 
 function normalizeGeminiPayload(parsed, fallbackType) {
+  const normalizedDocumentType = String(parsed?.document_type || fallbackType);
+  const blockedNestedFields = BLOCKED_NESTED_FIELDS[normalizedDocumentType] || new Set();
+
   const fields = Array.isArray(parsed?.fields)
-    ? parsed.fields.map((field) => ({
-      key: String(field?.key || 'unknown_field'),
-      value: field?.value == null ? null : String(field.value),
-      confidence: Number.isFinite(field?.confidence) ? Number(field.confidence) : 0,
-      source: 'gemini_ocr',
-      reviewRequired: Boolean(field?.reviewRequired),
-      notes: field?.notes == null ? null : String(field.notes),
-    }))
+    ? parsed.fields.reduce((accumulator, field) => {
+      const key = String(field?.key || 'unknown_field');
+
+      if (blockedNestedFields.has(key)) {
+        return accumulator;
+      }
+
+      const value = normalizeFieldValue(field?.value);
+
+      if (value === undefined) {
+        return accumulator;
+      }
+
+      accumulator.push({
+        key,
+        value,
+        confidence: Number.isFinite(field?.confidence) ? Number(field.confidence) : 0,
+        source: 'gemini_ocr',
+        reviewRequired: Boolean(field?.reviewRequired),
+        notes: field?.notes == null ? null : String(field.notes),
+      });
+
+      return accumulator;
+    }, [])
     : [];
 
-  const normalizedDocumentType = String(parsed?.document_type || fallbackType);
   const filteredFields = normalizedDocumentType === 'npwp'
     ? fields.filter((field) => !['nik', 'kpp_registered'].includes(field.key))
     : fields;

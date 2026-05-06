@@ -42,9 +42,25 @@ function formatConfidence(value: number): string {
 }
 
 function shouldHideField(documentType: string | undefined, fieldKey: string): boolean {
-  return documentType === 'npwp' && ['nik', 'kpp_registered'].includes(fieldKey);
+  const normalizedDocumentType = documentType?.toLowerCase();
+  const rootFieldKey = fieldKey.toLowerCase().split('.')[0];
+
+  if (normalizedDocumentType === 'npwp' && ['nik', 'kpp_registered'].includes(rootFieldKey)) return true;
+  if (normalizedDocumentType === 'kk' && rootFieldKey === 'members') return true;
+  if (normalizedDocumentType === 'rekening_koran' && rootFieldKey === 'transactions') return true;
+
+  return false;
 }
 
+function shouldHideGlobalField(fieldKey: string): boolean {
+  const [documentType, ...fieldKeyParts] = fieldKey.split('.');
+
+  if (!fieldKeyParts.length) {
+    return shouldHideField(undefined, fieldKey);
+  }
+
+  return shouldHideField(documentType, fieldKeyParts.join('.'));
+}
 export function OcrResultStep({
   extraction,
   loading,
@@ -62,11 +78,7 @@ export function OcrResultStep({
     [extraction?.documents],
   );
   const visibleGlobalFields = useMemo(
-    () =>
-      (extraction?.fields || []).filter((field) => {
-        const [documentType, fieldKey] = field.key.split('.', 2);
-        return !shouldHideField(fieldKey ? documentType : undefined, fieldKey || field.key);
-      }),
+    () => (extraction?.fields || []).filter((field) => !shouldHideGlobalField(field.key)),
     [extraction?.fields],
   );
 
@@ -215,18 +227,22 @@ export function OcrResultStep({
                         <tr key={`${doc.evidenceId}-${field.key}`} className="border-t border-slate-100 dark:border-slate-800">
                           <td className="px-4 py-2 font-medium text-slate-900 dark:text-slate-100">{formatFieldLabel(field.key)}</td>
                           <td className="px-4 py-2 text-slate-700 dark:text-slate-200">
-                            <div className="flex items-center gap-2">
-                              <input
-                                className="input-base py-1.5 text-xs"
+                          <div className="flex items-start gap-2">
+                              <textarea
+                                rows={3}
+                                className="input-base min-h-[88px] w-full resize-y px-3 py-2 text-sm leading-relaxed"
                                 value={resolveValue(`${doc.evidenceId}:${field.key}`, field.value)}
                                 onChange={(event) =>
-                                  setManualEdits((prev) => ({ ...prev, [`${doc.evidenceId}:${field.key}`]: event.target.value }))
+                                  setManualEdits((prev) => ({
+                                    ...prev,
+                                    [`${doc.evidenceId}:${field.key}`]: event.target.value,
+                                  }))
                                 }
                               />
                               {isEdited(`${doc.evidenceId}:${field.key}`) ? (
-                                <span className="rounded-full bg-amber-100 px-2 py-0.5 text-[11px] font-semibold text-amber-800 dark:bg-amber-900/40 dark:text-amber-200">
-                                  Edited
-                                </span>
+                                <span className="mt-2 rounded-full bg-amber-100 px-2 py-0.5 text-[11px] font-semibold text-amber-800 dark:bg-amber-900/40 dark:text-amber-200">
+                                Edited
+                              </span>
                               ) : null}
                             </div>
                           </td>
@@ -262,12 +278,18 @@ export function OcrResultStep({
                   <tr key={field.key} className="border-t border-slate-100 dark:border-slate-800">
                     <td className="px-4 py-2 font-medium text-slate-900 dark:text-slate-100">{formatFieldLabel(field.key)}</td>
                     <td className="px-4 py-2 text-slate-700 dark:text-slate-200">
-                      <div className="flex items-center gap-2">
-                        <input
-                          className="input-base py-1.5 text-xs"
-                          value={resolveValue(`global:${field.key}`, field.value)}
-                          onChange={(event) => setManualEdits((prev) => ({ ...prev, [`global:${field.key}`]: event.target.value }))}
-                        />
+                    <div className="flex items-start gap-2">
+                            <textarea
+                              rows={3}
+                              className="input-base min-h-[88px] w-full resize-y px-3 py-2 text-sm leading-relaxed"
+                              value={resolveValue(`global:${field.key}`, field.value)}
+                              onChange={(event) =>
+                                setManualEdits((prev) => ({
+                                  ...prev,
+                                  [`global:${field.key}`]: event.target.value,
+                                }))
+                              }
+                            />
                         {isEdited(`global:${field.key}`) ? (
                           <span className="rounded-full bg-amber-100 px-2 py-0.5 text-[11px] font-semibold text-amber-800 dark:bg-amber-900/40 dark:text-amber-200">
                             Edited
