@@ -33,7 +33,9 @@ app.use('/api/cases', caseRoutes);
 app.use('/api/cases', evidenceRoutes);
 app.use('/api/cases', extractionRoutes);
 app.use('/api/bulk', bulkRoutes);
+
 app.use('/bulk', bulkRoutes);
+
 
 app.use(notFoundHandler);
 app.use(errorHandler);
