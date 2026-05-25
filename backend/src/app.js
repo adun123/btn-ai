@@ -8,7 +8,7 @@ const healthRoutes = require('./modules/health/health.routes');
 const caseRoutes = require('./modules/assessment-core/case.routes');
 const evidenceRoutes = require('./modules/evidence-documents/evidence.routes');
 const extractionRoutes = require('./modules/extraction/extraction.routes');
-const bulkRoutes = require('./modules/bulk/bulk.routes');
+const bulkRoutes = require('./modules/bulk-processing/bulk.routes');
 
 const app = express();
 
