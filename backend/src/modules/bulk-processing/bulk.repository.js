@@ -50,6 +50,12 @@ async function listJobs(limit = 50) {
   return unwrapSupabase(result, 'list bulk jobs').map(mapJobRow);
 }
 
+async function deleteJob(jobId) {
+  const supabase = getSupabase();
+  const result = await supabase.from('bulk_jobs').delete().eq('id', jobId);
+  if (result.error) unwrapSupabase(result, 'delete bulk job');
+}
+
 // ─── Pages CRUD ─────────────────────────────────────────────────────────────
 
 async function insertPages(pages) {
@@ -233,6 +239,7 @@ module.exports = {
   updateJob,
   findJobById,
   listJobs,
+  deleteJob,
   insertPages,
   updatePage,
   updatePagesBatch,

@@ -70,4 +70,5 @@ export const bulkApi = {
   getJob: (jobId: string) => request<BulkJob>(buildUrl(`/jobs/${jobId}`)),
 
   getJobDetails: (jobId: string) => request<BulkJobDetails>(buildUrl(`/jobs/${jobId}/details`)),
+  deleteJob: (jobId: string) => request<void>(buildUrl(`/jobs/${jobId}`), { method: 'DELETE' }),
 };

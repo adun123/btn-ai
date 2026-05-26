@@ -650,6 +650,9 @@ export function BulkResultStep({ jobId, onReset }: { jobId: string; onReset: () 
           <button className="flex items-center gap-2 px-4 py-2.5 rounded-xl text-sm font-semibold text-white" style={{ background: 'var(--primary)' }}>
             <Download className="w-4 h-4" /> Export
           </button>
+          <button onClick={async () => { if (confirm('Hapus semua data job ini? Data tidak bisa dikembalikan.')) { await bulkApi.deleteJob(jobId); onReset(); } }} className="flex items-center gap-2 px-4 py-2.5 rounded-xl text-sm font-semibold text-red-600 bg-red-50 transition hover:bg-red-100">
+            <Trash2 className="w-4 h-4" /> Hapus
+          </button>
         </div>
       </div>
 

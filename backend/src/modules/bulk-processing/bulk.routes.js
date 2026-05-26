@@ -124,6 +124,33 @@ router.get('/jobs/:jobId', async (req, res, next) => {
 
 /**
  * @openapi
+ * /bulk/jobs/{jobId}:
+ *   delete:
+ *     tags: [Bulk OCR Processing]
+ *     summary: Delete a job and all its data (pages, documents, nasabah)
+ *     parameters:
+ *       - in: path
+ *         name: jobId
+ *         required: true
+ *         schema:
+ *           type: string
+ *     responses:
+ *       200:
+ *         description: Job deleted
+ *       404:
+ *         description: Job not found
+ */
+router.delete('/jobs/:jobId', async (req, res, next) => {
+  try {
+    await service.deleteJob(req.params.jobId);
+    res.json({ success: true });
+  } catch (error) {
+    next(error);
+  }
+});
+
+/**
+ * @openapi
  * /bulk/jobs/{jobId}/details:
  *   get:
  *     tags: [Bulk OCR Processing]

@@ -317,10 +317,22 @@ async function listJobs(limit) {
   return jobs.map(normalizeJob);
 }
 
+/**
+ * Delete a job and all associated data.
+ */
+async function deleteJob(jobId) {
+  const job = await repository.findJobById(jobId);
+  if (!job) {
+    throw createHttpError(404, 'Bulk processing job not found');
+  }
+  await repository.deleteJob(jobId);
+}
+
 module.exports = {
   handleBulkUpload,
   getJobStatus,
   getJobDetails,
   getPageOcrData,
   listJobs,
+  deleteJob,
 };
