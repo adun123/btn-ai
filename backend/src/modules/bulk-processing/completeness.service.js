@@ -5,47 +5,63 @@
  * Reports what's present, missing, and incomplete.
  */
 
-// Standard KPR document checklist
+// BTN KPR Subsidi document checklist
 const KPR_CHECKLIST = {
-  identitas: {
-    label: 'Identitas',
+  data_diri: {
+    label: 'Data Diri',
     required: [
+      { type: 'formulir_aplikasi_kredit', label: 'Formulir Aplikasi Kredit', required: true },
+      { type: 'pas_foto', label: 'Pas Foto Pemohon', required: true },
       { type: 'ktp', label: 'KTP Pemohon', required: true },
       { type: 'kk', label: 'Kartu Keluarga', required: true },
-      { type: 'npwp', label: 'NPWP', required: true },
+      { type: 'npwp', label: 'NPWP Pemohon', required: true },
+      { type: 'surat_pemesanan_rumah', label: 'Surat Pemesanan Rumah', required: true },
+    ],
+    optional: [],
+  },
+  data_pasangan: {
+    label: 'Data Pasangan (Jika Sudah Menikah)',
+    required: [
+      { type: 'pas_foto_pasangan', label: 'Pas Foto Pasangan', required: true },
+      { type: 'ktp_pasangan', label: 'KTP Pasangan', required: true },
+      { type: 'npwp_pasangan', label: 'NPWP Pasangan', required: true },
     ],
     optional: [
-      { type: 'akta_nikah', label: 'Akta Nikah', required: false },
+      { type: 'akta_nikah', label: 'Akta Nikah / Buku Nikah', required: false },
       { type: 'akta_cerai', label: 'Akta Cerai', required: false },
     ],
   },
-  finansial: {
-    label: 'Finansial',
+  penghasilan_fixed: {
+    label: 'Data Penghasilan (Fixed Income)',
     required: [
-      { type: 'slip_gaji', label: 'Slip Gaji (3 bulan)', required: true, minCount: 3 },
-      { type: 'rekening_koran', label: 'Rekening Koran (6 bulan)', required: true },
+      { type: 'rekening_koran', label: 'Rekening Koran (3 bulan)', required: true },
+      { type: 'slip_gaji', label: 'Slip Gaji / Surat Keterangan Penghasilan', required: true },
     ],
     optional: [
-      { type: 'spt_pajak', label: 'SPT Pajak', required: false },
-    ],
-  },
-  properti: {
-    label: 'Properti',
-    required: [
-      { type: 'sertifikat_tanah', label: 'Sertifikat Tanah', required: true },
-      { type: 'imb', label: 'IMB / PBG', required: true },
-      { type: 'pbb', label: 'PBB Tahun Berjalan', required: true },
-    ],
-    optional: [
-      { type: 'ajb', label: 'Akta Jual Beli', required: false },
-    ],
-  },
-  pendukung: {
-    label: 'Pendukung',
-    required: [
       { type: 'surat_keterangan_kerja', label: 'Surat Keterangan Kerja', required: false },
     ],
+  },
+  penghasilan_non_fixed: {
+    label: 'Data Penghasilan (Non Fixed Income)',
+    required: [
+      { type: 'rekening_koran', label: 'Rekening Koran (6 bulan)', required: true },
+      { type: 'nib', label: 'NIB', required: true },
+      { type: 'laporan_keuangan_usaha', label: 'Laporan Keuangan Usaha (6 Bulan)', required: true },
+      { type: 'dokumen_informasi_usaha', label: 'Dokumen Informasi Usaha', required: true },
+    ],
     optional: [],
+  },
+  dokumen_pendukung: {
+    label: 'Dokumen Pendukung Lainnya',
+    required: [],
+    optional: [
+      { type: 'spt_pajak', label: 'SPT Pajak', required: false },
+      { type: 'siup_tdp', label: 'SIUP / TDP', required: false },
+      { type: 'akte_pendirian', label: 'Akte Pendirian & Pengesahan DEPKUMHAM', required: false },
+      { type: 'izin_praktik', label: 'Izin Praktik', required: false },
+      { type: 'sertifikat_tanah', label: 'Sertifikat', required: false },
+      { type: 'imb', label: 'IMB', required: false },
+    ],
   },
 };
 

@@ -17,7 +17,7 @@ export default function BulkPage() {
       {jobId ? (
         <BulkResultStep jobId={jobId} onReset={() => setJobId(null)} />
       ) : (
-        <BulkUploadStep onComplete={setJobId} />
+        <BulkUploadStep onComplete={setJobId} onViewResult={setJobId} />
       )}
     </main>
   );

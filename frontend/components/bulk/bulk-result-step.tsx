@@ -4,7 +4,7 @@ import { useEffect, useMemo, useState, useCallback } from 'react';
 import {
   Search, Eye, FileText, CheckCircle2, AlertTriangle, XCircle,
   X, UserRound, BadgeCheck, Filter, Download, RotateCcw,
-  Pencil, Trash2, Plus, Save, Upload,
+  Pencil, Trash2, Plus, Save, Upload, Loader2,
 } from 'lucide-react';
 import { bulkApi } from '../../lib/api-bulk';
 import type { BulkJobDetails, BulkNasabah, BulkDocument, BulkDocumentField } from '../../types/bulk';
@@ -12,14 +12,24 @@ import type { BulkJobDetails, BulkNasabah, BulkDocument, BulkDocumentField } fro
 // --- Config ---
 
 const DOC_LABELS: Record<string, string> = {
-  ktp: 'KTP Pemohon', kk: 'Kartu Keluarga', npwp: 'NPWP',
-  slip_gaji: 'Slip Gaji', rekening_koran: 'Rekening Koran',
-  sertifikat_tanah: 'Sertifikat Tanah', imb: 'IMB / PBG', pbb: 'PBB',
-  ajb: 'Akta Jual Beli', akta_nikah: 'Akta Nikah', akta_cerai: 'Akta Cerai',
-  spt_pajak: 'SPT Pajak', surat_keterangan_kerja: 'Surat Keterangan Kerja',
+  formulir_aplikasi_kredit: 'Formulir Aplikasi Kredit',
+  pas_foto: 'Pas Foto Pemohon', ktp: 'KTP Pemohon', kk: 'Kartu Keluarga',
+  npwp: 'NPWP Pemohon', surat_pemesanan_rumah: 'Surat Pemesanan Rumah',
+  pas_foto_pasangan: 'Pas Foto Pasangan', ktp_pasangan: 'KTP Pasangan',
+  npwp_pasangan: 'NPWP Pasangan', akta_nikah: 'Akta Nikah / Buku Nikah',
+  akta_cerai: 'Akta Cerai', rekening_koran: 'Rekening Koran',
+  slip_gaji: 'Slip Gaji', surat_keterangan_kerja: 'Surat Keterangan Kerja',
+  nib: 'NIB', laporan_keuangan_usaha: 'Laporan Keuangan Usaha',
+  dokumen_informasi_usaha: 'Dokumen Informasi Usaha',
+  spt_pajak: 'SPT Pajak', siup_tdp: 'SIUP / TDP',
+  akte_pendirian: 'Akte Pendirian & Pengesahan', izin_praktik: 'Izin Praktik',
+  sertifikat_tanah: 'Sertifikat', imb: 'IMB',
 };
 
-const REQUIRED_DOCS = ['ktp', 'kk', 'npwp', 'slip_gaji', 'rekening_koran'];
+const REQUIRED_DOCS = [
+  'formulir_aplikasi_kredit', 'pas_foto', 'ktp', 'kk', 'npwp',
+  'surat_pemesanan_rumah', 'rekening_koran', 'slip_gaji',
+];
 
 type NasabahStatus = 'Verified' | 'Need Review' | 'Incomplete';
 
@@ -236,10 +246,64 @@ function AddDocumentForm({ onAdd, onCancel }: { onAdd: (docType: string, file: F
 }
 
 
+// --- Validation Checklist (matches backend KPR_CHECKLIST) ---
+
+const VALIDATION_CHECKLIST = {
+  data_diri: {
+    label: 'Data Diri',
+    items: [
+      { type: 'formulir_aplikasi_kredit', label: 'Formulir Aplikasi Kredit', required: true },
+      { type: 'pas_foto', label: 'Pas Foto Pemohon', required: true },
+      { type: 'ktp', label: 'KTP Pemohon', required: true },
+      { type: 'kk', label: 'Kartu Keluarga', required: true },
+      { type: 'npwp', label: 'NPWP Pemohon', required: true },
+      { type: 'surat_pemesanan_rumah', label: 'Surat Pemesanan Rumah', required: true },
+    ],
+  },
+  data_pasangan: {
+    label: 'Data Pasangan (Jika Menikah)',
+    items: [
+      { type: 'pas_foto_pasangan', label: 'Pas Foto Pasangan', required: true },
+      { type: 'ktp_pasangan', label: 'KTP Pasangan', required: true },
+      { type: 'npwp_pasangan', label: 'NPWP Pasangan', required: true },
+      { type: 'akta_nikah', label: 'Akta Nikah / Buku Nikah', required: false },
+      { type: 'akta_cerai', label: 'Akta Cerai', required: false },
+    ],
+  },
+  penghasilan_fixed: {
+    label: 'Penghasilan (Fixed Income)',
+    items: [
+      { type: 'rekening_koran', label: 'Rekening Koran (3 bulan)', required: true },
+      { type: 'slip_gaji', label: 'Slip Gaji', required: true },
+      { type: 'surat_keterangan_kerja', label: 'Surat Keterangan Kerja', required: false },
+    ],
+  },
+  penghasilan_non_fixed: {
+    label: 'Penghasilan (Non Fixed Income)',
+    items: [
+      { type: 'nib', label: 'NIB', required: true },
+      { type: 'laporan_keuangan_usaha', label: 'Laporan Keuangan Usaha', required: true },
+      { type: 'dokumen_informasi_usaha', label: 'Dokumen Informasi Usaha', required: true },
+    ],
+  },
+  dokumen_pendukung: {
+    label: 'Dokumen Pendukung',
+    items: [
+      { type: 'spt_pajak', label: 'SPT Pajak', required: false },
+      { type: 'siup_tdp', label: 'SIUP / TDP', required: false },
+      { type: 'akte_pendirian', label: 'Akte Pendirian', required: false },
+      { type: 'izin_praktik', label: 'Izin Praktik', required: false },
+      { type: 'sertifikat_tanah', label: 'Sertifikat', required: false },
+      { type: 'imb', label: 'IMB', required: false },
+    ],
+  },
+};
+
+
 // --- Detail Modal ---
 
 function DetailModal({
-  nasabah, documents, onClose, onEditDoc, onDeleteDoc, onAddDoc,
+  nasabah, documents, onClose, onEditDoc, onDeleteDoc, onAddDoc, onEditNasabah,
 }: {
   nasabah: BulkNasabah | null;
   documents: BulkDocument[];
@@ -247,8 +311,14 @@ function DetailModal({
   onEditDoc: (doc: BulkDocument, fields: BulkDocumentField[]) => void;
   onDeleteDoc: (docId: string) => void;
   onAddDoc: (nasabahId: string, docType: string, file: File) => void;
+  onEditNasabah: (nasabahId: string, updates: { fullName?: string; nik?: string }) => void;
 }) {
   const [showAddForm, setShowAddForm] = useState(false);
+  const [addingDoc, setAddingDoc] = useState(false);
+  const [editingName, setEditingName] = useState(false);
+  const [editingNik, setEditingNik] = useState(false);
+  const [nameValue, setNameValue] = useState('');
+  const [nikValue, setNikValue] = useState('');
 
   if (!nasabah) return null;
 
@@ -256,6 +326,18 @@ function DetailModal({
   const foundTypes = [...new Set(nasabahDocs.map(d => d.documentType))];
   const allTypes = [...new Set([...REQUIRED_DOCS, ...foundTypes])];
   const status = getNasabahStatus(nasabah);
+
+  const handleStartEditName = () => { setNameValue(nasabah.fullName); setEditingName(true); };
+  const handleSaveName = () => { onEditNasabah(nasabah.id, { fullName: nameValue }); setEditingName(false); };
+  const handleStartEditNik = () => { setNikValue(nasabah.nik); setEditingNik(true); };
+  const handleSaveNik = () => { onEditNasabah(nasabah.id, { nik: nikValue }); setEditingNik(false); };
+
+  const handleAddDoc = async (docType: string, file: File) => {
+    setAddingDoc(true);
+    setShowAddForm(false);
+    await onAddDoc(nasabah.id, docType, file);
+    setAddingDoc(false);
+  };
 
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center p-4 backdrop-blur-sm" style={{ background: 'rgba(0,0,0,0.4)' }}>
@@ -276,21 +358,54 @@ function DetailModal({
 
         {/* Body */}
         <div className="max-h-[calc(90vh-88px)] overflow-y-auto p-6">
-          {/* Summary cards */}
+          {/* Summary cards — editable nama & NIK */}
           <div className="grid gap-4 md:grid-cols-3 mb-6">
-            <div className="rounded-2xl p-4" style={{ background: 'var(--primary-soft)' }}>
+            <div className="rounded-2xl p-4 group relative" style={{ background: 'var(--primary-soft)' }}>
               <p className="text-xs font-semibold uppercase text-muted">Nama</p>
-              <p className="mt-1 font-semibold">{nasabah.fullName}</p>
+              {editingName ? (
+                <div className="flex items-center gap-2 mt-1">
+                  <input value={nameValue} onChange={e => setNameValue(e.target.value)} className="flex-1 font-semibold bg-white rounded-lg px-2 py-1 text-sm border" style={{ borderColor: 'var(--border)' }} autoFocus />
+                  <button onClick={handleSaveName} className="text-xs font-bold px-2 py-1 rounded-lg text-white" style={{ background: 'var(--primary)' }}>✓</button>
+                  <button onClick={() => setEditingName(false)} className="text-xs font-bold px-2 py-1 rounded-lg text-muted">✕</button>
+                </div>
+              ) : (
+                <div className="flex items-center gap-2 mt-1">
+                  <p className="font-semibold">{nasabah.fullName || '-'}</p>
+                  <button onClick={handleStartEditName} className="opacity-0 group-hover:opacity-100 transition"><Pencil className="h-3.5 w-3.5 text-muted" /></button>
+                </div>
+              )}
             </div>
-            <div className="rounded-2xl p-4" style={{ background: 'var(--primary-soft)' }}>
+            <div className="rounded-2xl p-4 group relative" style={{ background: 'var(--primary-soft)' }}>
               <p className="text-xs font-semibold uppercase text-muted">NIK</p>
-              <p className="mt-1 font-semibold">{nasabah.nik}</p>
+              {editingNik ? (
+                <div className="flex items-center gap-2 mt-1">
+                  <input value={nikValue} onChange={e => setNikValue(e.target.value)} className="flex-1 font-semibold bg-white rounded-lg px-2 py-1 text-sm border" style={{ borderColor: 'var(--border)' }} autoFocus />
+                  <button onClick={handleSaveNik} className="text-xs font-bold px-2 py-1 rounded-lg text-white" style={{ background: 'var(--primary)' }}>✓</button>
+                  <button onClick={() => setEditingNik(false)} className="text-xs font-bold px-2 py-1 rounded-lg text-muted">✕</button>
+                </div>
+              ) : (
+                <div className="flex items-center gap-2 mt-1">
+                  <p className="font-semibold">{nasabah.nik || '-'}</p>
+                  <button onClick={handleStartEditNik} className="opacity-0 group-hover:opacity-100 transition"><Pencil className="h-3.5 w-3.5 text-muted" /></button>
+                </div>
+              )}
             </div>
             <div className="rounded-2xl p-4" style={{ background: 'var(--primary-soft)' }}>
               <p className="text-xs font-semibold uppercase text-muted">Completeness</p>
               <p className="mt-1 font-semibold">{Math.round(nasabah.completenessScore * 100)}%</p>
             </div>
           </div>
+
+          {/* AI processing indicator */}
+          {addingDoc && (
+            <div className="glass-card p-5 mb-6 flex items-center gap-4">
+              <Loader2 className="h-5 w-5 animate-spin" style={{ color: 'var(--primary)' }} />
+              <div>
+                <p className="font-semibold text-sm">Memproses dokumen dengan AI...</p>
+                <p className="text-xs text-muted">Mengklasifikasi dan mengekstrak data</p>
+              </div>
+            </div>
+          )}
 
           <div className="grid gap-6 lg:grid-cols-[1.3fr_0.7fr]">
             {/* Documents - left column */}
@@ -331,7 +446,7 @@ function DetailModal({
               {/* Add document */}
               {showAddForm ? (
                 <AddDocumentForm
-                  onAdd={(docType, file) => { onAddDoc(nasabah.id, docType, file); setShowAddForm(false); }}
+                  onAdd={(docType, file) => handleAddDoc(docType, file)}
                   onCancel={() => setShowAddForm(false)}
                 />
               ) : (
@@ -347,38 +462,55 @@ function DetailModal({
 
             {/* Validation sidebar - right column */}
             <div className="space-y-4">
-              <div className="glass-card p-5">
-                <h3 className="flex items-center gap-2 font-bold mb-4">
-                  <BadgeCheck className="h-5 w-5" style={{ color: 'var(--primary)' }} /> Validation
-                </h3>
-                <div className="space-y-2">
-                  {REQUIRED_DOCS.map(docType => {
-                    const found = nasabahDocs.some(d => d.documentType === docType);
-                    return (
-                      <div key={docType} className="flex items-center justify-between gap-3 rounded-xl px-4 py-3" style={{ background: 'var(--primary-soft)' }}>
-                        <p className="text-sm">{DOC_LABELS[docType] || docType}</p>
-                        {found ? <CheckCircle2 className="h-4 w-4 text-green-500" /> : <XCircle className="h-4 w-4 text-red-400" />}
-                      </div>
-                    );
-                  })}
-                </div>
-              </div>
+              {Object.entries(VALIDATION_CHECKLIST).map(([catKey, category]) => {
+                const catItems = category.items;
+                const foundCount = catItems.filter(item => nasabahDocs.some(d => d.documentType === item.type)).length;
+                const requiredCount = catItems.filter(i => i.required).length;
+                const requiredFound = catItems.filter(i => i.required && nasabahDocs.some(d => d.documentType === i.type)).length;
+
+                return (
+                  <div key={catKey} className="glass-card p-5">
+                    <div className="flex items-center justify-between mb-3">
+                      <h3 className="font-bold text-sm">{category.label}</h3>
+                      <span className="text-xs font-semibold rounded-full px-2 py-0.5" style={{ background: requiredFound === requiredCount ? 'rgb(220 252 231)' : 'rgb(254 226 226)', color: requiredFound === requiredCount ? 'rgb(22 101 52)' : 'rgb(153 27 27)' }}>
+                        {foundCount}/{catItems.length}
+                      </span>
+                    </div>
+                    <div className="space-y-1.5">
+                      {catItems.map(item => {
+                        const doc = nasabahDocs.find(d => d.documentType === item.type);
+                        const found = !!doc;
+                        return (
+                          <div key={item.type} className="flex items-center justify-between gap-2 rounded-lg px-3 py-2" style={{ background: found ? 'rgb(240 253 244)' : item.required ? 'rgb(254 242 242)' : 'var(--primary-soft)' }}>
+                            <div className="flex items-center gap-2 min-w-0">
+                              {found ? <CheckCircle2 className="h-3.5 w-3.5 shrink-0 text-green-600" /> : item.required ? <XCircle className="h-3.5 w-3.5 shrink-0 text-red-400" /> : <div className="h-3.5 w-3.5 shrink-0 rounded-full border-2" style={{ borderColor: 'var(--border)' }} />}
+                              <span className="text-xs truncate">{item.label}</span>
+                            </div>
+                            {found && doc && <span className="text-[10px] font-semibold text-green-700">{Math.round(doc.confidence * 100)}%</span>}
+                            {!found && item.required && <span className="text-[10px] font-semibold text-red-500">WAJIB</span>}
+                          </div>
+                        );
+                      })}
+                    </div>
+                  </div>
+                );
+              })}
 
               {nasabah.warnings.length > 0 && (
                 <div className="glass-card p-5">
-                  <h3 className="flex items-center gap-2 font-bold mb-3">
-                    <AlertTriangle className="h-5 w-5 text-amber-500" /> Warnings
+                  <h3 className="flex items-center gap-2 font-bold text-sm mb-3">
+                    <AlertTriangle className="h-4 w-4 text-amber-500" /> Warnings
                   </h3>
-                  {nasabah.warnings.map((w, i) => <p key={i} className="text-xs text-amber-600">{w}</p>)}
+                  {nasabah.warnings.map((w, i) => <p key={i} className="text-xs text-amber-600 mb-1">{w}</p>)}
                 </div>
               )}
 
               {nasabah.missing.length > 0 && (
                 <div className="glass-card p-5">
-                  <h3 className="flex items-center gap-2 font-bold mb-3">
-                    <XCircle className="h-5 w-5 text-red-400" /> Missing
+                  <h3 className="flex items-center gap-2 font-bold text-sm mb-3">
+                    <XCircle className="h-4 w-4 text-red-400" /> Dokumen Missing
                   </h3>
-                  {nasabah.missing.map((m, i) => <p key={i} className="text-xs text-red-500">{m}</p>)}
+                  {nasabah.missing.map((m, i) => <p key={i} className="text-xs text-red-500 mb-1">• {m}</p>)}
                 </div>
               )}
 
@@ -424,7 +556,27 @@ export function BulkResultStep({ jobId, onReset }: { jobId: string; onReset: () 
     });
   }, []);
 
-  const handleAddDoc = useCallback((nasabahId: string, docType: string, file: File) => {
+  const handleAddDoc = useCallback(async (nasabahId: string, docType: string, file: File) => {
+    // Upload to backend for AI processing
+    try {
+      const form = new FormData();
+      form.append('files', file);
+      const base = (process.env.NEXT_PUBLIC_BACKEND_URL || 'http://localhost:4000').replace(/\/+$/, '').replace(/\/api$/, '');
+      const res = await fetch(`${base}/api/bulk/upload`, { method: 'POST', body: form });
+      if (res.ok) {
+        const { data: uploadResult } = await res.json();
+        // Wait for processing then fetch the new doc details
+        const details = await bulkApi.getJobDetails(uploadResult.jobId);
+        const newDocs = details.documents.map((d: BulkDocument) => ({ ...d, nasabahId, documentType: docType }));
+        setData(prev => {
+          if (!prev) return prev;
+          return { ...prev, documents: [...prev.documents, ...newDocs] };
+        });
+        return;
+      }
+    } catch { /* fallback below */ }
+
+    // Fallback: add without AI processing
     setData(prev => {
       if (!prev) return prev;
       const newDoc: BulkDocument = {
@@ -438,6 +590,21 @@ export function BulkResultStep({ jobId, onReset }: { jobId: string; onReset: () 
         fields: [],
       };
       return { ...prev, documents: [...prev.documents, newDoc] };
+    });
+  }, []);
+
+  const handleEditNasabah = useCallback((nasabahId: string, updates: { fullName?: string; nik?: string }) => {
+    setData(prev => {
+      if (!prev) return prev;
+      return {
+        ...prev,
+        result: {
+          ...prev.result,
+          nasabah: prev.result.nasabah.map(n =>
+            n.id === nasabahId ? { ...n, ...updates } : n
+          ),
+        },
+      };
     });
   }, []);
 
@@ -581,6 +748,7 @@ export function BulkResultStep({ jobId, onReset }: { jobId: string; onReset: () 
           onEditDoc={handleEditDoc}
           onDeleteDoc={handleDeleteDoc}
           onAddDoc={handleAddDoc}
+          onEditNasabah={handleEditNasabah}
         />
       )}
     </div>

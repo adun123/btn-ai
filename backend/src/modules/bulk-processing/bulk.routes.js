@@ -1,6 +1,8 @@
 const express = require('express');
 const multer = require('multer');
 const service = require('./bulk.service');
+const storageService = require('./bulk-storage.service');
+const { createAndProcessJob } = require('./bulk-orchestrator.service');
 
 const router = express.Router();
 
@@ -174,6 +176,96 @@ router.get('/jobs/:jobId/pages/:pageId', async (req, res, next) => {
   try {
     const page = await service.getPageOcrData(req.params.jobId, req.params.pageId);
     res.json({ success: true, data: page });
+  } catch (error) {
+    next(error);
+  }
+});
+
+/**
+ * @openapi
+ * /bulk/presign:
+ *   post:
+ *     tags: [Bulk OCR Processing]
+ *     summary: Generate presigned upload URLs for direct-to-storage upload
+ *     description: |
+ *       Returns signed URLs so the client can upload files directly to Supabase Storage,
+ *       bypassing the serverless function body size limit.
+ *     requestBody:
+ *       required: true
+ *       content:
+ *         application/json:
+ *           schema:
+ *             type: object
+ *             required: [files]
+ *             properties:
+ *               files:
+ *                 type: array
+ *                 items:
+ *                   type: object
+ *                   properties:
+ *                     filename:
+ *                       type: string
+ *                     contentType:
+ *                       type: string
+ *     responses:
+ *       200:
+ *         description: Signed URLs generated
+ */
+router.post('/presign', async (req, res, next) => {
+  try {
+    const result = await storageService.generatePresignedUrls(req.body.files);
+    res.json({ success: true, data: result });
+  } catch (error) {
+    next(error);
+  }
+});
+
+/**
+ * @openapi
+ * /bulk/process-storage:
+ *   post:
+ *     tags: [Bulk OCR Processing]
+ *     summary: Trigger bulk processing from files already uploaded to storage
+ *     requestBody:
+ *       required: true
+ *       content:
+ *         application/json:
+ *           schema:
+ *             type: object
+ *             required: [uploadId, files]
+ *             properties:
+ *               uploadId:
+ *                 type: string
+ *               files:
+ *                 type: array
+ *                 items:
+ *                   type: object
+ *                   properties:
+ *                     filename:
+ *                       type: string
+ *                     path:
+ *                       type: string
+ *                     contentType:
+ *                       type: string
+ *     responses:
+ *       202:
+ *         description: Job created, processing started
+ */
+router.post('/process-storage', async (req, res, next) => {
+  try {
+    const { uploadId, files } = req.body;
+    if (!uploadId || !files || files.length === 0) {
+      return res.status(400).json({ success: false, error: 'uploadId and files are required' });
+    }
+
+    const downloaded = await storageService.downloadFromStorage(uploadId, files);
+    const uploadType = downloaded.length === 1 && downloaded[0].mimetype.includes('zip') ? 'zip' : 'bulk_files';
+    const result = await service.handleBulkUpload(downloaded);
+
+    // Cleanup storage in background
+    storageService.cleanupUpload(uploadId).catch(() => {});
+
+    res.status(202).json({ success: true, data: result });
   } catch (error) {
     next(error);
   }
