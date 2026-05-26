@@ -608,6 +608,22 @@ export function BulkResultStep({ jobId, onReset }: { jobId: string; onReset: () 
     });
   }, []);
 
+  const handleDeleteNasabah = useCallback((nasabahId: string) => {
+    if (!confirm('Hapus nasabah ini beserta semua dokumennya?')) return;
+    setData(prev => {
+      if (!prev) return prev;
+      return {
+        ...prev,
+        result: {
+          ...prev.result,
+          totalNasabah: prev.result.totalNasabah - 1,
+          nasabah: prev.result.nasabah.filter(n => n.id !== nasabahId),
+        },
+        documents: prev.documents.filter(d => d.nasabahId !== nasabahId),
+      };
+    });
+  }, []);
+
   // --- Derived data ---
 
   const nasabahWithStatus = useMemo(() => {
@@ -649,9 +665,6 @@ export function BulkResultStep({ jobId, onReset }: { jobId: string; onReset: () 
           </button>
           <button className="flex items-center gap-2 px-4 py-2.5 rounded-xl text-sm font-semibold text-white" style={{ background: 'var(--primary)' }}>
             <Download className="w-4 h-4" /> Export
-          </button>
-          <button onClick={async () => { if (confirm('Hapus semua data job ini? Data tidak bisa dikembalikan.')) { await bulkApi.deleteJob(jobId); onReset(); } }} className="flex items-center gap-2 px-4 py-2.5 rounded-xl text-sm font-semibold text-red-600 bg-red-50 transition hover:bg-red-100">
-            <Trash2 className="w-4 h-4" /> Hapus
           </button>
         </div>
       </div>
@@ -724,9 +737,14 @@ export function BulkResultStep({ jobId, onReset }: { jobId: string; onReset: () 
                   <td className="px-5 py-4"><StatusBadge status={n._status} /></td>
                   <td className="px-5 py-4"><ConfidenceBar score={n.completenessScore} /></td>
                   <td className="px-5 py-4 text-right">
-                    <button onClick={() => setSelectedNasabah(n)} className="inline-flex items-center gap-2 rounded-xl border px-4 py-2 text-sm font-semibold transition hover:opacity-80" style={{ borderColor: 'var(--border)' }}>
-                      <Eye className="h-4 w-4" /> View
-                    </button>
+                    <div className="flex items-center justify-end gap-2">
+                      <button onClick={() => setSelectedNasabah(n)} className="inline-flex items-center gap-2 rounded-xl border px-4 py-2 text-sm font-semibold transition hover:opacity-80" style={{ borderColor: 'var(--border)' }}>
+                        <Eye className="h-4 w-4" /> View
+                      </button>
+                      <button onClick={() => handleDeleteNasabah(n.id)} className="inline-flex items-center gap-1.5 rounded-xl px-3 py-2 text-sm font-semibold text-red-600 bg-red-50 transition hover:bg-red-100">
+                        <Trash2 className="h-4 w-4" />
+                      </button>
+                    </div>
                   </td>
                 </tr>
               ))}
