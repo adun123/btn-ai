@@ -11,15 +11,21 @@
  */
 
 const DOCUMENT_TYPES = {
-  ktp: {
-    keywords: ['kartu tanda penduduk', 'nik', 'provinsi', 'kabupaten', 'kecamatan', 'kelurahan', 'berlaku hingga', 'tempat/tgl lahir', 'jenis kelamin', 'gol. darah', 'agama', 'status perkawinan', 'pekerjaan', 'kewarganegaraan', 'rt/rw'],
-    patterns: [/\b\d{16}\b/, /NIK\s*[:\-]?\s*\d{16}/i, /berlaku\s*hingga/i, /KARTU TANDA PENDUDUK/i],
-    weight: 1.0,
-  },
   kk: {
-    keywords: ['kartu keluarga', 'kepala keluarga', 'nomor kk', 'no. kk', 'anggota keluarga', 'hubungan keluarga', 'desa/kelurahan', 'kabupaten/kota'],
-    patterns: [/KARTU KELUARGA/i, /No\.?\s*KK/i, /Kepala Keluarga/i, /\b\d{16}\b/],
+    keywords: ['kartu keluarga', 'kepala keluarga', 'nomor kk', 'no. kk', 'anggota keluarga', 'hubungan keluarga', 'desa/kelurahan', 'kabupaten/kota', 'status hubungan', 'dalam keluarga', 'nama orang tua'],
+    exclusiveKeywords: ['kartu keluarga', 'kepala keluarga', 'status hubungan', 'dalam keluarga', 'nama orang tua'],
+    negativeKeywords: ['kartu tanda penduduk', 'berlaku hingga'],
+    patterns: [/KARTU KELUARGA/i, /No\.?\s*KK/i, /Kepala Keluarga/i, /KEPALA KELUARGA/i, /Status Hubungan.*Dalam Keluarga/is, /ANAK|ISTERI|ISTRI|KEPALA KELU?ARGA/i],
+    weight: 1.2,
+    priority: 10,
+  },
+  ktp: {
+    keywords: ['kartu tanda penduduk', 'berlaku hingga', 'tempat/tgl lahir', 'gol. darah'],
+    exclusiveKeywords: ['kartu tanda penduduk', 'berlaku hingga', 'gol. darah'],
+    negativeKeywords: ['kartu keluarga', 'kepala keluarga', 'status hubungan dalam keluarga', 'nama orang tua'],
+    patterns: [/KARTU TANDA PENDUDUK/i, /berlaku\s*hingga/i, /gol\.?\s*darah/i],
     weight: 1.0,
+    priority: 5,
   },
   slip_gaji: {
     keywords: ['slip gaji', 'gaji pokok', 'tunjangan', 'potongan', 'take home pay', 'netto', 'bruto', 'upah', 'honorarium', 'lembur', 'bpjs', 'pph 21', 'periode gaji'],
@@ -95,8 +101,27 @@ function classifyText(ocrText) {
     let score = 0;
     const matchedKeywords = [];
 
-    // Keyword matching
+    // Check negative keywords first — if found, heavily penalize
+    const negatives = config.negativeKeywords || [];
+    let negativePenalty = 0;
+    for (const neg of negatives) {
+      if (textLower.includes(neg.toLowerCase())) {
+        negativePenalty += 5;
+      }
+    }
+
+    // Exclusive keywords (strong signal, worth more)
+    const exclusives = config.exclusiveKeywords || [];
+    for (const keyword of exclusives) {
+      if (textLower.includes(keyword.toLowerCase())) {
+        score += 4;
+        matchedKeywords.push(keyword);
+      }
+    }
+
+    // Regular keyword matching
     for (const keyword of config.keywords) {
+      if (exclusives.includes(keyword)) continue; // already counted
       if (textLower.includes(keyword.toLowerCase())) {
         score += 1;
         matchedKeywords.push(keyword);
@@ -110,11 +135,11 @@ function classifyText(ocrText) {
       }
     }
 
-    // Apply weight
-    score *= config.weight;
+    // Apply weight and subtract penalty
+    score = (score * (config.weight || 1.0)) - negativePenalty;
 
     if (score > 0) {
-      scores[docType] = { score, matchedKeywords };
+      scores[docType] = { score, matchedKeywords, priority: config.priority || 0 };
     }
   }
 
@@ -122,11 +147,17 @@ function classifyText(ocrText) {
     return { documentType: 'unknown', confidence: 0, method: 'rule_based', matchedKeywords: [] };
   }
 
-  // Find best match
-  const sorted = Object.entries(scores).sort((a, b) => b[1].score - a[1].score);
+  // Sort by score, then by priority for tiebreakers
+  const sorted = Object.entries(scores).sort((a, b) => {
+    if (b[1].score !== a[1].score) return b[1].score - a[1].score;
+    return b[1].priority - a[1].priority;
+  });
+
   const [bestType, bestData] = sorted[0];
-  const maxPossibleScore = DOCUMENT_TYPES[bestType].keywords.length + (DOCUMENT_TYPES[bestType].patterns.length * 2);
-  const confidence = Math.min(1, bestData.score / Math.max(maxPossibleScore * 0.5, 1));
+  const maxPossibleScore = (DOCUMENT_TYPES[bestType].exclusiveKeywords?.length || 0) * 4
+    + (DOCUMENT_TYPES[bestType].keywords.length - (DOCUMENT_TYPES[bestType].exclusiveKeywords?.length || 0))
+    + (DOCUMENT_TYPES[bestType].patterns.length * 2);
+  const confidence = Math.min(1, bestData.score / Math.max(maxPossibleScore * 0.4, 1));
 
   return {
     documentType: bestType,
