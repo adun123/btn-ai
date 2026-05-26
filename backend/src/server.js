@@ -1,6 +1,6 @@
 require('dotenv').config();
 
-const app = require('./app'); // ✅ TANPA {}
+const app = require('./app'); // app.js exports the Express instance directly, not an object wrapper.
 
 const PORT = Number(process.env.PORT || 4000);
 

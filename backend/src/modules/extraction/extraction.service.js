@@ -6,6 +6,7 @@ const { extractDocument } = require('../provider-gateway/gemini-ocr.service');
 const { normalizeDocumentType } = require('../evidence-documents/evidence.service');
 
 function buildBranchExtraction() {
+  // Branch OCR is still a placeholder that preserves the future BTN block-form response shape.
   return {
     channel: 'branch',
     status: 'completed',
@@ -26,6 +27,7 @@ function buildBranchExtraction() {
 }
 
 function selectLatestBaleEvidence(evidence, allowedTypes) {
+  // If users upload the same document type multiple times, OCR should process only the newest file per type.
   const latestByType = new Map();
 
   evidence.forEach((item, index) => {
@@ -70,6 +72,7 @@ async function buildBaleExtraction(record) {
 
     const detectedDocumentType = normalizeDocumentType(extracted.documentType);
     if (detectedDocumentType !== item.documentType) {
+      // Reject mismatches so a file labeled as KTP cannot silently populate the wrong review fields.
       throw createHttpError(
         400,
         `Uploaded documentType "${item.documentType}" does not match the detected document type "${detectedDocumentType}". Bale extraction rejected.`,

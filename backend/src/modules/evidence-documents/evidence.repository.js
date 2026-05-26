@@ -3,6 +3,7 @@ const { mapEvidenceRow } = require('../../data/case-mappers');
 
 async function insertEvidence(caseId, items, files) {
   const supabase = getSupabase();
+  // This PoC stores file bytes as base64 in Postgres; production should move payloads to object storage.
   const rows = items.map((item, index) => ({
     id: item.id,
     case_id: caseId,

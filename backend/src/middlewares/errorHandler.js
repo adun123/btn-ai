@@ -9,6 +9,7 @@ function notFoundHandler(req, res) {
 }
 
 function errorHandler(err, req, res, next) {
+  // Multer reports upload failures with its own error class; translate them before the generic handler.
   if (err instanceof multer.MulterError) {
     const status = err.code === 'LIMIT_FILE_SIZE' ? 413 : 400;
     return res.status(status).json({

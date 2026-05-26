@@ -28,6 +28,7 @@ async function createCase(payload) {
 
 async function getCase(caseId, clientCase) {
   let record = await repository.findCaseById(caseId);
+  // Serverless deployments may lose warm memory; trusted client snapshots can rehydrate an existing draft.
   if (!record && clientCase !== undefined && clientCase !== null) {
     const normalized = normalizeClientCaseSnapshot(caseId, clientCase);
     if (normalized) {

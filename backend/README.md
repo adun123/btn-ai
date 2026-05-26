@@ -23,6 +23,87 @@ Required backend env:
 - `SUPABASE_SERVICE_ROLE_KEY`
 - `GEMINI_API_KEY` for Bale OCR
 
+## Struktur folder backend
+
+Bagian ini menjelaskan isi folder `backend/` dari level folder sampai file utama agar alur kode lebih mudah ditelusuri.
+
+| Path | Fungsi |
+| --- | --- |
+| `.env` | Konfigurasi lokal berisi secret asli. File ini tidak perlu dibaca/dibagikan karena berisi kredensial. |
+| `.env.example` | Contoh nama environment variable yang harus disiapkan untuk Supabase, Gemini, port, dan CORS. |
+| `package.json` | Metadata project Node.js, daftar dependency, dan script seperti `npm start` dan `npm test`. |
+| `package-lock.json` | Lockfile dependency npm agar versi package konsisten antar mesin. |
+| `README.md` | Dokumentasi backend, endpoint utama, flow OCR, dan penjelasan struktur folder ini. |
+| `node_modules/` | Dependency hasil `npm install`. Folder generated ini tidak perlu diedit manual. |
+| `src/` | Source code aplikasi Express. Semua route, service, repository, middleware, OpenAPI, dan util berada di sini. |
+| `supabase/` | File pendukung Supabase, terutama migration schema database untuk tabel `cases` dan `evidence_documents`. |
+
+### Isi `src/`
+
+| Path | Fungsi |
+| --- | --- |
+| `src/app.js` | Membuat Express app, memasang middleware global, Swagger, route API, dan handler error. |
+| `src/server.js` | Entry point lokal yang membaca `.env`, mengambil `app`, lalu menjalankan server di `PORT`. |
+| `src/data/` | Boundary akses database: koneksi Supabase dan mapper dari bentuk row database ke object aplikasi. |
+| `src/middlewares/` | Middleware lintas modul. Saat ini berisi handler 404 dan error response global. |
+| `src/modules/` | Modul domain backend. Setiap modul memegang route/service/repository sesuai tanggung jawabnya. |
+| `src/openapi/` | Konfigurasi Swagger/OpenAPI untuk dokumentasi API interaktif. |
+| `src/utils/` | Helper umum seperti pembuat case, HTTP error, dan normalisasi snapshot case dari client. |
+
+### Isi `src/data/`
+
+| File | Fungsi |
+| --- | --- |
+| `case-mappers.js` | Mengubah nama field database `snake_case` menjadi response API `camelCase`, dan sebaliknya saat menyimpan case. |
+| `supabase.js` | Membuat singleton Supabase client dari env dan mengubah error Supabase menjadi HTTP error konsisten. |
+
+### Isi `src/middlewares/`
+
+| File | Fungsi |
+| --- | --- |
+| `errorHandler.js` | Mengirim response JSON untuk route yang tidak ditemukan, error umum, dan error upload dari Multer. |
+
+### Isi `src/modules/`
+
+| Folder | Fungsi |
+| --- | --- |
+| `assessment-core/` | Lifecycle case KPR: create, list, detail, update, update status, delete, dan penyimpanan record case. |
+| `evidence-documents/` | Upload dokumen evidence, validasi `documentType` berdasarkan channel, dan penyimpanan metadata/file. |
+| `extraction/` | Orkestrasi OCR: branch masih placeholder, Bale menjalankan Gemini OCR dan menyimpan hasil ekstraksi. |
+| `health/` | Endpoint health check untuk status service, konfigurasi Supabase, runtime, dan provider AI. |
+| `property-location/` | Folder cadangan untuk modul lokasi properti; saat ini masih kosong. |
+| `provider-gateway/` | Integrasi provider eksternal. Saat ini berisi service OCR Gemini. |
+
+### File penting per modul
+
+| File | Fungsi |
+| --- | --- |
+| `src/modules/assessment-core/case.routes.js` | Definisi endpoint REST untuk case dan anotasi OpenAPI-nya. |
+| `src/modules/assessment-core/case.service.js` | Business logic case, validasi channel, audit trail, dan fallback snapshot client. |
+| `src/modules/assessment-core/case.repository.js` | Query Supabase untuk save, get, list, delete case, termasuk hydrate evidence per case. |
+| `src/modules/evidence-documents/evidence.routes.js` | Endpoint upload/list evidence untuk satu `caseId`. |
+| `src/modules/evidence-documents/evidence.service.js` | Validasi dokumen per channel, konfigurasi Multer memory upload, dan pencatatan audit upload. |
+| `src/modules/evidence-documents/evidence.repository.js` | Insert metadata evidence dan mengambil payload base64 dokumen untuk OCR. |
+| `src/modules/extraction/extraction.routes.js` | Endpoint start extraction dan get extraction result. |
+| `src/modules/extraction/extraction.service.js` | Memilih pipeline OCR berdasarkan channel, menjalankan Gemini untuk Bale, dan menolak mismatch tipe dokumen. |
+| `src/modules/health/health.routes.js` | Endpoint `GET /health` untuk cek status backend dan konfigurasi runtime. |
+| `src/modules/provider-gateway/gemini-ocr.service.js` | Prompt, retry, parsing JSON, dan normalisasi hasil OCR dari Gemini. |
+
+### Isi `src/openapi/` dan `src/utils/`
+
+| File | Fungsi |
+| --- | --- |
+| `src/openapi/spec.js` | Membuat spesifikasi OpenAPI dari JSDoc route dan schema response/request. |
+| `src/utils/caseFactory.js` | Membuat object case baru beserta reference number, timestamp, status awal, dan audit awal. |
+| `src/utils/clientCaseSnapshot.js` | Menormalkan snapshot case dari client sebagai fallback untuk runtime serverless. |
+| `src/utils/httpError.js` | Helper kecil untuk membuat `Error` dengan `status` dan `details` agar dibaca error handler. |
+
+### Isi `supabase/`
+
+| File | Fungsi |
+| --- | --- |
+| `supabase/migrations/20260504_init_btn_assessment_persistence.sql` | Schema awal Supabase: tabel `cases`, tabel `evidence_documents`, index, trigger `updated_at`, dan RLS. |
+
 ## Run locally
 
 ```bash

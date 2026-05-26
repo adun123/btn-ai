@@ -8,6 +8,7 @@ function getEnv(name) {
 }
 
 function getSupabase() {
+  // Keep one Supabase client per Node.js process so every repository shares the same persistence boundary.
   if (supabaseClient) {
     return supabaseClient;
   }
@@ -34,6 +35,7 @@ function unwrapSupabase(result, action) {
     return result.data;
   }
 
+  // Repackage provider-specific errors into the API's standard error shape.
   throw createHttpError(500, `Supabase ${action} failed`, {
     code: result.error.code || null,
     message: result.error.message,
