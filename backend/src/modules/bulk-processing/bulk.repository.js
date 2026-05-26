@@ -168,6 +168,15 @@ async function getNasabahByJob(jobId) {
   return unwrapSupabase(result, 'get nasabah by job').map(mapNasabahRow);
 }
 
+async function deleteNasabah(nasabahId) {
+  const supabase = getSupabase();
+  // Delete associated documents
+  await supabase.from('bulk_documents').delete().eq('nasabah_id', nasabahId);
+  // Delete nasabah
+  const result = await supabase.from('bulk_nasabah').delete().eq('id', nasabahId);
+  if (result.error) unwrapSupabase(result, 'delete nasabah');
+}
+
 // ─── Row Mappers ────────────────────────────────────────────────────────────
 
 function mapJobRow(row) {
@@ -250,4 +259,5 @@ module.exports = {
   getDocumentsByJob,
   insertNasabah,
   getNasabahByJob,
+  deleteNasabah,
 };

@@ -328,6 +328,10 @@ async function deleteJob(jobId) {
   await repository.deleteJob(jobId);
 }
 
+async function deleteNasabah(nasabahId) {
+  await repository.deleteNasabah(nasabahId);
+}
+
 module.exports = {
   handleBulkUpload,
   getJobStatus,
@@ -335,4 +339,5 @@ module.exports = {
   getPageOcrData,
   listJobs,
   deleteJob,
+  deleteNasabah,
 };

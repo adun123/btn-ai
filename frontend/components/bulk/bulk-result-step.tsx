@@ -610,6 +610,7 @@ export function BulkResultStep({ jobId, onReset }: { jobId: string; onReset: () 
 
   const handleDeleteNasabah = useCallback((nasabahId: string) => {
     if (!confirm('Hapus nasabah ini beserta semua dokumennya?')) return;
+    bulkApi.deleteNasabah(jobId, nasabahId).catch(() => {});
     setData(prev => {
       if (!prev) return prev;
       return {
@@ -622,7 +623,7 @@ export function BulkResultStep({ jobId, onReset }: { jobId: string; onReset: () 
         documents: prev.documents.filter(d => d.nasabahId !== nasabahId),
       };
     });
-  }, []);
+  }, [jobId]);
 
   // --- Derived data ---
 

@@ -149,6 +149,15 @@ router.delete('/jobs/:jobId', async (req, res, next) => {
   }
 });
 
+router.delete('/jobs/:jobId/nasabah/:nasabahId', async (req, res, next) => {
+  try {
+    await service.deleteNasabah(req.params.nasabahId);
+    res.json({ success: true });
+  } catch (error) {
+    next(error);
+  }
+});
+
 /**
  * @openapi
  * /bulk/jobs/{jobId}/details:
