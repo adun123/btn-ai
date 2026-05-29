@@ -54,13 +54,30 @@ function shouldHideField(documentType: string | undefined, fieldKey: string): bo
 
 function shouldHideGlobalField(fieldKey: string): boolean {
   const [documentType, ...fieldKeyParts] = fieldKey.split('.');
-
-  if (!fieldKeyParts.length) {
-    return shouldHideField(undefined, fieldKey);
-  }
+  if (!fieldKeyParts.length) return shouldHideField(undefined, fieldKey);
 
   return shouldHideField(documentType, fieldKeyParts.join('.'));
 }
+
+function toDisplayValue(value: unknown): string {
+  if (value === null || value === undefined) return '';
+  if (typeof value === 'string') return value === '[object Object]' ? '' : value;
+  if (typeof value === 'number' || typeof value === 'boolean') return String(value);
+
+  return '';
+}
+
+function shouldHideManualEditKey(key: string, hiddenKeys: Set<string>): boolean {
+  if (hiddenKeys.has(key)) return true;
+  if (key.startsWith('global:')) return shouldHideGlobalField(key.slice('global:'.length));
+
+  return false;
+}
+
+function filterHiddenManualEdits(edits: Record<string, string>, hiddenKeys: Set<string>): Record<string, string> {
+  return Object.fromEntries(Object.entries(edits).filter(([key]) => !shouldHideManualEditKey(key, hiddenKeys)));
+}
+
 export function OcrResultStep({
   extraction,
   loading,
@@ -77,28 +94,40 @@ export function OcrResultStep({
       })),
     [extraction?.documents],
   );
-  const visibleGlobalFields = useMemo(
-    () => (extraction?.fields || []).filter((field) => !shouldHideGlobalField(field.key)),
-    [extraction?.fields],
-  );
+  const visibleGlobalFields = useMemo(() => (extraction?.fields || []).filter((field) => !shouldHideGlobalField(field.key)), [extraction?.fields]);
+
+  const hiddenManualEditKeys = useMemo(() => {
+    const hiddenKeys = new Set<string>();
+
+    (extraction?.documents || []).forEach((doc) => {
+      doc.fields.forEach((field) => {
+        if (shouldHideField(doc.documentType, field.key)) hiddenKeys.add(`${doc.evidenceId}:${field.key}`);
+      });
+    });
+    (extraction?.fields || []).forEach((field) => {
+      if (shouldHideGlobalField(field.key)) hiddenKeys.add(`global:${field.key}`);
+    });
+
+    return hiddenKeys;
+  }, [extraction?.documents, extraction?.fields]);
 
   const originalValues = useMemo(() => {
     const map: Record<string, string> = {};
     if (!extraction) return map;
     visibleDocuments.forEach((doc) => {
       doc.fields.forEach((field) => {
-        map[`${doc.evidenceId}:${field.key}`] = field.value || '';
+        map[`${doc.evidenceId}:${field.key}`] = toDisplayValue(field.value);
       });
     });
     visibleGlobalFields.forEach((field) => {
-      map[`global:${field.key}`] = field.value || '';
+      map[`global:${field.key}`] = toDisplayValue(field.value);
     });
     return map;
   }, [extraction, visibleDocuments, visibleGlobalFields]);
 
   useEffect(() => {
-    setManualEdits(persistedManualEdits || {});
-  }, [persistedManualEdits, extraction?.generatedAt]);
+    setManualEdits(filterHiddenManualEdits(persistedManualEdits || {}, hiddenManualEditKeys));
+  }, [persistedManualEdits, extraction?.generatedAt, hiddenManualEditKeys]);
 
   const documentWarnings = useMemo(
     () =>
@@ -118,8 +147,9 @@ export function OcrResultStep({
     return (extraction?.warnings || []).filter((warning) => !documentWarningSet.has(warning));
   }, [documentWarnings, extraction?.warnings]);
 
-  const resolveValue = (key: string, fallback: string | null) => (manualEdits[key] ?? fallback ?? '');
-  const isEdited = (key: string) => (manualEdits[key] ?? originalValues[key] ?? '') !== (originalValues[key] ?? '');
+  const resolveValue = (key: string, fallback: unknown) => toDisplayValue(manualEdits[key] ?? fallback);
+  const isEdited = (key: string) => resolveValue(key, originalValues[key]) !== (originalValues[key] ?? '');
+  const saveVisibleManualEdits = () => onSaveManualEdits(filterHiddenManualEdits(manualEdits, hiddenManualEditKeys));
 
   if (loading) {
     return (
@@ -195,7 +225,7 @@ export function OcrResultStep({
             </span>
             <button
               type="button"
-              onClick={() => onSaveManualEdits(manualEdits)}
+              onClick={saveVisibleManualEdits}
               disabled={savingManualEdits}
               className="rounded-lg bg-blue-900 px-3 py-1.5 text-xs font-semibold text-white disabled:opacity-60 dark:bg-blue-600"
             >
@@ -211,103 +241,81 @@ export function OcrResultStep({
                   <p className="text-sm font-semibold text-slate-900 dark:text-slate-100">{getDocumentLabel(doc.documentType)}</p>
                   <p className="text-xs text-slate-600 dark:text-slate-300">{doc.filename}</p>
                 </div>
-                <div className="overflow-x-auto">
-                  <table className="min-w-full text-left text-sm">
-                    <thead className="bg-slate-50 text-xs uppercase tracking-wide text-slate-600 dark:bg-slate-900 dark:text-slate-300">
-                      <tr>
-                        <th className="px-4 py-2">Field</th>
-                        <th className="px-4 py-2">Value</th>
-                        <th className="px-4 py-2">Confidence</th>
-                        <th className="px-4 py-2">Source</th>
-                        <th className="px-4 py-2">Status</th>
-                      </tr>
-                    </thead>
-                    <tbody>
-                      {doc.fields.map((field) => (
-                        <tr key={`${doc.evidenceId}-${field.key}`} className="border-t border-slate-100 dark:border-slate-800">
-                          <td className="px-4 py-2 font-medium text-slate-900 dark:text-slate-100">{formatFieldLabel(field.key)}</td>
-                          <td className="px-4 py-2 text-slate-700 dark:text-slate-200">
-                          <div className="flex items-start gap-2">
-                              <textarea
-                                rows={3}
-                                className="input-base min-h-[88px] w-full resize-y px-3 py-2 text-sm leading-relaxed"
-                                value={resolveValue(`${doc.evidenceId}:${field.key}`, field.value)}
-                                onChange={(event) =>
-                                  setManualEdits((prev) => ({
-                                    ...prev,
-                                    [`${doc.evidenceId}:${field.key}`]: event.target.value,
-                                  }))
-                                }
-                              />
-                              {isEdited(`${doc.evidenceId}:${field.key}`) ? (
-                                <span className="mt-2 rounded-full bg-amber-100 px-2 py-0.5 text-[11px] font-semibold text-amber-800 dark:bg-amber-900/40 dark:text-amber-200">
-                                Edited
-                              </span>
-                              ) : null}
-                            </div>
-                          </td>
-                          <td className="px-4 py-2 text-slate-700 dark:text-slate-200">{formatConfidence(field.confidence)}</td>
-                          <td className="px-4 py-2 text-slate-600 dark:text-slate-300">{formatFieldLabel(field.source)}</td>
-                          <td className="px-4 py-2">
+                <div className="grid gap-3 p-3">
+                  {doc.fields.map((field) => {
+                    const editKey = `${doc.evidenceId}:${field.key}`;
+
+                    return (
+                      <article key={`${doc.evidenceId}-${field.key}`} className="rounded-xl border border-slate-100 bg-white p-4 shadow-sm dark:border-slate-800 dark:bg-slate-950/30">
+                        <div className="flex flex-wrap items-start justify-between gap-3">
+                          <div className="min-w-0">
+                            <p className="font-medium text-slate-900 dark:text-slate-100">{formatFieldLabel(field.key)}</p>
+                            <p className="mt-1 text-xs text-slate-500 dark:text-slate-400">Source: {formatFieldLabel(field.source)}</p>
+                          </div>
+                          <div className="flex flex-wrap items-center gap-2">
+                            <span className="rounded-full bg-blue-50 px-2 py-1 text-xs font-medium text-blue-700 dark:bg-blue-950/40 dark:text-blue-200">
+                              {formatConfidence(field.confidence)}
+                            </span>
                             <span className={`rounded-full px-2 py-1 text-xs font-medium ${field.reviewRequired ? 'bg-amber-100 text-amber-800 dark:bg-amber-900/40 dark:text-amber-200' : 'bg-emerald-100 text-emerald-800 dark:bg-emerald-900/40 dark:text-emerald-200'}`}>
                               {field.reviewRequired ? 'Needs review' : 'Auto'}
                             </span>
-                          </td>
-                        </tr>
-                      ))}
-                    </tbody>
-                  </table>
+                          </div>
+                        </div>
+                        <div className="mt-3 space-y-2">
+                          <input
+                            className="input-base w-full py-2 text-sm"
+                            value={resolveValue(editKey, field.value)}
+                            onChange={(event) => setManualEdits((prev) => ({ ...prev, [editKey]: event.target.value }))}
+                          />
+                          {isEdited(editKey) ? (
+                            <span className="inline-flex rounded-full bg-amber-100 px-2 py-0.5 text-[11px] font-semibold text-amber-800 dark:bg-amber-900/40 dark:text-amber-200">
+                              Edited
+                            </span>
+                          ) : null}
+                        </div>
+                      </article>
+                    );
+                  })}
                 </div>
               </div>
             ))}
           </div>
         ) : (
-          <div className="mt-3 overflow-x-auto rounded-xl border border-blue-100 dark:border-blue-900">
-            <table className="min-w-full text-left text-sm">
-              <thead className="bg-slate-50 text-xs uppercase tracking-wide text-slate-600 dark:bg-slate-900 dark:text-slate-300">
-                <tr>
-                  <th className="px-4 py-2">Field</th>
-                  <th className="px-4 py-2">Value</th>
-                  <th className="px-4 py-2">Confidence</th>
-                  <th className="px-4 py-2">Source</th>
-                  <th className="px-4 py-2">Status</th>
-                </tr>
-              </thead>
-              <tbody>
-                {visibleGlobalFields.map((field) => (
-                  <tr key={field.key} className="border-t border-slate-100 dark:border-slate-800">
-                    <td className="px-4 py-2 font-medium text-slate-900 dark:text-slate-100">{formatFieldLabel(field.key)}</td>
-                    <td className="px-4 py-2 text-slate-700 dark:text-slate-200">
-                    <div className="flex items-start gap-2">
-                            <textarea
-                              rows={3}
-                              className="input-base min-h-[88px] w-full resize-y px-3 py-2 text-sm leading-relaxed"
-                              value={resolveValue(`global:${field.key}`, field.value)}
-                              onChange={(event) =>
-                                setManualEdits((prev) => ({
-                                  ...prev,
-                                  [`global:${field.key}`]: event.target.value,
-                                }))
-                              }
-                            />
-                        {isEdited(`global:${field.key}`) ? (
-                          <span className="rounded-full bg-amber-100 px-2 py-0.5 text-[11px] font-semibold text-amber-800 dark:bg-amber-900/40 dark:text-amber-200">
-                            Edited
-                          </span>
-                        ) : null}
-                      </div>
-                    </td>
-                    <td className="px-4 py-2 text-slate-700 dark:text-slate-200">{formatConfidence(field.confidence)}</td>
-                    <td className="px-4 py-2 text-slate-600 dark:text-slate-300">{formatFieldLabel(field.source)}</td>
-                    <td className="px-4 py-2">
+          <div className="mt-3 grid gap-3 rounded-xl border border-blue-100 p-3 dark:border-blue-900">
+            {visibleGlobalFields.map((field) => {
+              const editKey = `global:${field.key}`;
+
+              return (
+                <article key={field.key} className="rounded-xl border border-slate-100 bg-white p-4 shadow-sm dark:border-slate-800 dark:bg-slate-950/30">
+                  <div className="flex flex-wrap items-start justify-between gap-3">
+                    <div className="min-w-0">
+                      <p className="font-medium text-slate-900 dark:text-slate-100">{formatFieldLabel(field.key)}</p>
+                      <p className="mt-1 text-xs text-slate-500 dark:text-slate-400">Source: {formatFieldLabel(field.source)}</p>
+                    </div>
+                    <div className="flex flex-wrap items-center gap-2">
+                      <span className="rounded-full bg-blue-50 px-2 py-1 text-xs font-medium text-blue-700 dark:bg-blue-950/40 dark:text-blue-200">
+                        {formatConfidence(field.confidence)}
+                      </span>
                       <span className={`rounded-full px-2 py-1 text-xs font-medium ${field.reviewRequired ? 'bg-amber-100 text-amber-800 dark:bg-amber-900/40 dark:text-amber-200' : 'bg-emerald-100 text-emerald-800 dark:bg-emerald-900/40 dark:text-emerald-200'}`}>
                         {field.reviewRequired ? 'Needs review' : 'Auto'}
                       </span>
-                    </td>
-                  </tr>
-                ))}
-              </tbody>
-            </table>
+                    </div>
+                  </div>
+                  <div className="mt-3 space-y-2">
+                    <input
+                      className="input-base w-full py-2 text-sm"
+                      value={resolveValue(editKey, field.value)}
+                      onChange={(event) => setManualEdits((prev) => ({ ...prev, [editKey]: event.target.value }))}
+                    />
+                    {isEdited(editKey) ? (
+                      <span className="inline-flex rounded-full bg-amber-100 px-2 py-0.5 text-[11px] font-semibold text-amber-800 dark:bg-amber-900/40 dark:text-amber-200">
+                        Edited
+                      </span>
+                    ) : null}
+                  </div>
+                </article>
+              );
+            })}
           </div>
         )}
       </section>

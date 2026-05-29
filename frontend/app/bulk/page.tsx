@@ -1,12 +1,35 @@
 'use client';
 
-import { useState } from 'react';
+import { Suspense } from 'react';
+import { useSearchParams, useRouter } from 'next/navigation';
 import { BulkUploadStep } from '../../components/bulk/bulk-upload-step';
 import { BulkResultStep } from '../../components/bulk/bulk-result-step';
 
-export default function BulkPage() {
-  const [jobId, setJobId] = useState<string | null>(null);
+function BulkContent() {
+  const searchParams = useSearchParams();
+  const router = useRouter();
+  const jobId = searchParams.get('jobId');
 
+  const setJobId = (id: string) => {
+    router.replace(`/bulk?jobId=${id}`);
+  };
+
+  const clearJobId = () => {
+    router.replace('/bulk');
+  };
+
+  return (
+    <>
+      {jobId ? (
+        <BulkResultStep jobId={jobId} onReset={clearJobId} />
+      ) : (
+        <BulkUploadStep onComplete={setJobId} onViewResult={setJobId} />
+      )}
+    </>
+  );
+}
+
+export default function BulkPage() {
   return (
     <main className="min-h-screen p-6 md:p-10 max-w-7xl mx-auto">
       <header className="mb-8">
@@ -14,11 +37,9 @@ export default function BulkPage() {
         <p className="text-muted text-sm">Upload dokumen banyak nasabah sekaligus — otomatis dikelompokkan dan dicek kelengkapannya</p>
       </header>
 
-      {jobId ? (
-        <BulkResultStep jobId={jobId} onReset={() => setJobId(null)} />
-      ) : (
-        <BulkUploadStep onComplete={setJobId} />
-      )}
+      <Suspense fallback={<div className="text-center text-muted">Loading...</div>}>
+        <BulkContent />
+      </Suspense>
     </main>
   );
 }

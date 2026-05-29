@@ -1,7 +1,7 @@
 'use client';
 
 import { useCallback, useState } from 'react';
-import { Upload, FileArchive, Loader2 } from 'lucide-react';
+import { Upload, FileArchive, Loader2, History, XCircle } from 'lucide-react';
 import { bulkApi } from '../../lib/api-bulk';
 import type { BulkJob, BulkJobStatus } from '../../types/bulk';
 
@@ -15,12 +15,13 @@ const STATUS_LABELS: Record<BulkJobStatus, string> = {
   failed: 'Gagal',
 };
 
-export function BulkUploadStep({ onComplete }: { onComplete: (jobId: string) => void }) {
+export function BulkUploadStep({ onComplete, onViewResult }: { onComplete: (jobId: string) => void; onViewResult: (jobId: string) => void }) {
   const [dragOver, setDragOver] = useState(false);
   const [files, setFiles] = useState<File[]>([]);
   const [uploading, setUploading] = useState(false);
   const [job, setJob] = useState<BulkJob | null>(null);
   const [error, setError] = useState('');
+  const [cancelled, setCancelled] = useState(false);
 
   const handleFiles = useCallback((incoming: FileList | File[]) => {
     const arr = Array.from(incoming).filter(f =>
@@ -43,34 +44,54 @@ export function BulkUploadStep({ onComplete }: { onComplete: (jobId: string) => 
     handleFiles(e.dataTransfer.files);
   }, [handleFiles]);
 
+  const handleCancel = () => {
+    setCancelled(true);
+    setUploading(false);
+    setJob(null);
+    setError('Proses dibatalkan.');
+  };
+
   const handleSubmit = async () => {
     if (!files.length) return;
     setUploading(true);
     setError('');
+    setCancelled(false);
+    setJob({ processedPages: 0, totalPages: files.length, status: 'ocr_processing' } as BulkJob);
     try {
-      const { jobId } = await bulkApi.upload(files);
-      // Poll until completed/failed
-      const poll = async () => {
-        const data = await bulkApi.getJob(jobId);
-        setJob(data);
-        if (data.status === 'completed') {
-          onComplete(jobId);
-        } else if (data.status === 'failed') {
-          setError('Proses gagal. Silakan coba lagi.');
-          setUploading(false);
-        } else {
-          setTimeout(poll, 1500);
-        }
-      };
-      poll();
+      const { jobId, status } = await bulkApi.upload(files);
+      if (cancelled) return;
+      if (status === 'completed') {
+        onComplete(jobId);
+      } else if (status === 'failed') {
+        setError('Proses gagal. Silakan coba lagi.');
+        setUploading(false);
+      } else {
+        const poll = async () => {
+          if (cancelled) return;
+          const data = await bulkApi.getJob(jobId);
+          setJob(data);
+          if (data.status === 'completed') {
+            onComplete(jobId);
+          } else if (data.status === 'failed') {
+            setError('Proses gagal. Silakan coba lagi.');
+            setUploading(false);
+          } else {
+            setTimeout(poll, 2000);
+          }
+        };
+        poll();
+      }
     } catch {
-      setError('Upload gagal. Pastikan backend berjalan.');
-      setUploading(false);
+      if (!cancelled) {
+        setError('Upload/proses gagal. Pastikan backend berjalan.');
+        setUploading(false);
+      }
     }
   };
 
   const progress = job ? Math.round((job.processedPages / Math.max(job.totalPages, 1)) * 100) : 0;
 
+  // Processing state with cancel button
   if (uploading && job) {
     return (
       <div className="glass-card p-8 max-w-lg mx-auto text-center space-y-6">
@@ -85,9 +106,16 @@ export function BulkUploadStep({ onComplete }: { onComplete: (jobId: string) => 
         <p className="text-muted text-sm">
           {job.processedPages} / {job.totalPages} halaman diproses
         </p>
+        <button
+          onClick={handleCancel}
+          className="inline-flex items-center gap-2 px-5 py-2.5 rounded-xl text-sm font-semibold text-red-600 bg-red-50 transition hover:bg-red-100"
+        >
+          <XCircle className="h-4 w-4" /> Batalkan
+        </button>
       </div>
     );
   }
+
 
   return (
     <div className="glass-card p-8 max-w-lg mx-auto space-y-6">
@@ -144,6 +172,22 @@ export function BulkUploadStep({ onComplete }: { onComplete: (jobId: string) => 
         style={{ background: 'var(--primary)' }}
       >
         {uploading ? 'Mengupload...' : 'Proses Dokumen'}
+      </button>
+
+      {/* View previous results */}
+      <button
+        onClick={async () => {
+          try {
+            const jobs = await bulkApi.getJobs();
+            const last = jobs.find(j => j.status === 'completed');
+            if (last) onViewResult(last.id);
+            else setError('Belum ada hasil pemrosesan sebelumnya.');
+          } catch { setError('Gagal memuat data.'); }
+        }}
+        className="w-full flex items-center justify-center gap-2 py-3 rounded-xl font-medium text-sm transition hover:opacity-80"
+        style={{ background: 'var(--primary-soft)', color: 'var(--primary)' }}
+      >
+        <History className="h-4 w-4" /> Lihat Hasil Sebelumnya
       </button>
     </div>
   );

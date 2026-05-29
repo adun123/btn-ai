@@ -12,6 +12,7 @@ const DOCUMENT_FIELD_TEMPLATES = {
 };
 
 const BLOCKED_NESTED_FIELDS = {
+  // Large nested arrays are useful for full parsing, but the current review UI expects flat field rows.
   kk: new Set(['members']),
   rekening_koran: new Set(['transactions']),
 };
@@ -52,6 +53,7 @@ function normalizeFieldValue(value) {
 function buildPrompt(documentType) {
   const expectedFields = DOCUMENT_FIELD_TEMPLATES[documentType] || [];
 
+  // The prompt is strict because downstream code parses JSON directly and compares the detected document type.
   return `You are an OCR and structured extraction system for Indonesian mortgage onboarding documents.
 
 Document type hint: ${documentType}.
@@ -153,6 +155,7 @@ async function extractDocument({ documentType, mimeType, base64Data }) {
       const message = error instanceof Error ? error.message : String(error);
       const retryable = message.includes('503') || message.includes('429') || message.includes('high demand');
 
+      // Retry only transient provider pressure; malformed requests should fail without hiding the cause.
       if (!retryable || attempt === 3) {
         throw createHttpError(503, 'Gemini OCR is temporarily unavailable. Please retry in a moment.', {
           provider: 'gemini',

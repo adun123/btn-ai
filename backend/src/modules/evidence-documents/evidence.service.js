@@ -9,6 +9,7 @@ const branchDocumentTypes = new Set(['application_form', 'supporting_document', 
 const baleDocumentTypes = new Set(['ktp', 'kk', 'slip_gaji', 'npwp', 'rekening_koran']);
 
 const upload = multer({
+  // Memory storage lets the OCR path read the file buffer immediately before persisting it as base64.
   storage: multer.memoryStorage(),
   limits: { fileSize: 10 * 1024 * 1024 },
 });
@@ -73,6 +74,7 @@ function normalizeDocumentType(value) {
 }
 
 function validateDocumentType(channel, documentType) {
+  // Each intake channel has a different document taxonomy, so validation happens after the case is loaded.
   if (channel === 'bale' && !baleDocumentTypes.has(documentType)) {
     throw createHttpError(400, 'For bale channel, documentType must be one of: ktp, kk, slip_gaji, npwp, rekening_koran', {
       allowed: Array.from(baleDocumentTypes),

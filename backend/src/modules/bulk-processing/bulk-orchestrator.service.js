@@ -20,9 +20,41 @@ const { ocrBatch } = require('./paddleocr.service');
 const { classifyAndGroupPages } = require('./classification.service');
 const { groupByNasabah } = require('./grouping.service');
 const { checkAllCompleteness } = require('./completeness.service');
+const { classifyAndExtractWithAI } = require('./ai-classification.service');
 
 const DEFAULT_BATCH_SIZE = 20;
 const OCR_CONCURRENCY = 5;
+
+/**
+ * AI-based classification: sends each page's OCR text to Gemini for classification + field extraction.
+ * Returns same format as classifyAndGroupPages for compatibility.
+ */
+async function classifyWithAI(pagesWithText) {
+  const documents = [];
+
+  // Process pages in batches of 5 to avoid rate limits
+  for (let i = 0; i < pagesWithText.length; i += 5) {
+    const batch = pagesWithText.slice(i, i + 5);
+    const results = await Promise.all(
+      batch.map(async (page) => {
+        const detected = await classifyAndExtractWithAI(page.ocrText);
+        return detected.map((doc) => ({
+          documentType: doc.documentType,
+          confidence: doc.confidence,
+          method: 'ai_gemini',
+          sourceFilename: page.sourceFilename,
+          pageIds: [page.pageId],
+          extractedFields: doc.fields,
+        }));
+      })
+    );
+    for (const pageResults of results) {
+      documents.push(...pageResults);
+    }
+  }
+
+  return documents;
+}
 
 /**
  * Create a new bulk processing job and begin processing in background.
@@ -54,17 +86,21 @@ async function createAndProcessJob(input) {
     },
   });
 
-  // Start processing in background (fire-and-forget)
-  processJob(jobId, files, batchSize).catch(async (error) => {
+  // Process synchronously (required for serverless environments like Vercel
+  // where the function terminates after response is sent)
+  try {
+    await processJob(jobId, files, batchSize);
+  } catch (error) {
     console.error(`[BulkOCR] Job ${jobId} failed:`, error.message);
     await repository.updateJob(jobId, {
       status: 'failed',
       error: error.message || 'Unknown processing error',
       completedAt: new Date().toISOString(),
     }).catch(() => {});
-  });
+  }
 
-  return { jobId: job.id, status: job.status };
+  const finalJob = await repository.findJobById(jobId);
+  return { jobId: job.id, status: finalJob?.status || job.status };
 }
 
 /**
@@ -188,7 +224,13 @@ async function processJob(jobId, files, batchSize) {
       return a.pageNumber - b.pageNumber;
     });
 
-  const classifiedDocs = classifyAndGroupPages(pagesWithText);
+  // Use AI (Gemini) for classification + extraction if available, fallback to rule-based
+  let classifiedDocs;
+  if (process.env.GEMINI_API_KEY) {
+    classifiedDocs = await classifyWithAI(pagesWithText);
+  } else {
+    classifiedDocs = classifyAndGroupPages(pagesWithText);
+  }
 
   // Save documents to DB
   const docRecords = classifiedDocs.map((doc) => ({
@@ -278,17 +320,12 @@ async function processJob(jobId, files, batchSize) {
  * Process a single batch of pages through OCR.
  */
 async function processBatch(batchPages) {
-  const images = batchPages.map((page) => {
-    const dotIdx = page.sourceFilename.lastIndexOf('.');
-    const name = dotIdx > 0 ? page.sourceFilename.slice(0, dotIdx) : page.sourceFilename;
-    const ext = dotIdx > 0 ? page.sourceFilename.slice(dotIdx) : '.jpg';
-    return {
-      base64Data: page.base64Data,
-      mimeType: page.mimeType,
-      filename: `${name}_p${page.pageNumber}${ext}`,
-      pageId: page.id,
-    };
-  });
+  const images = batchPages.map((page) => ({
+    base64Data: page.base64Data,
+    mimeType: page.mimeType,
+    filename: `${page.sourceFilename}_p${page.pageNumber}`,
+    pageId: page.id,
+  }));
 
   return ocrBatch(images, { concurrency: OCR_CONCURRENCY });
 }

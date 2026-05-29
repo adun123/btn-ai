@@ -27,6 +27,7 @@ const ZIP_MIME_TYPES = new Set([
 
 const MAX_FILE_SIZE = 100 * 1024 * 1024; // 100MB per file
 const MAX_TOTAL_SIZE = 500 * 1024 * 1024; // 500MB total
+const UNIDENTIFIED_FULL_NAME = 'Unidentified';
 
 /**
  * Handle bulk upload (ZIP or multiple files).
@@ -154,6 +155,100 @@ function getMimeFromExtension(ext) {
   return map[ext] || null;
 }
 
+function normalizeUploadType(uploadType) {
+  return uploadType === 'bulk_files' ? 'files' : uploadType;
+}
+
+function isUnidentifiedNasabah(record) {
+  return (record.fullName || '').trim() === UNIDENTIFIED_FULL_NAME;
+}
+
+function normalizeJob(job) {
+  const result = job.result || {};
+
+  return {
+    id: job.id,
+    status: job.status,
+    uploadType: normalizeUploadType(job.uploadType),
+    totalFiles: result.totalFiles ?? job.totalFiles ?? 0,
+    totalPages: result.totalPages ?? job.totalPages ?? 0,
+    processedPages: result.processedPages ?? job.processedPages ?? 0,
+    failedPages: result.failedPages ?? 0,
+    batchCount: job.batchCount ?? 0,
+    batchSize: job.batchSize ?? 0,
+    createdAt: job.createdAt,
+    completedAt: job.completedAt || undefined,
+  };
+}
+
+function normalizeDocument(doc) {
+  const extractedFields = doc.extractedFields && typeof doc.extractedFields === 'object'
+    ? doc.extractedFields
+    : {};
+
+  return {
+    id: doc.id,
+    jobId: doc.jobId,
+    nasabahId: doc.nasabahId || '',
+    documentType: doc.documentType,
+    filename: doc.sourceFilename,
+    pageCount: Array.isArray(doc.pageIds) ? doc.pageIds.length : 0,
+    confidence: doc.confidence ?? 0,
+    fields: Object.entries(extractedFields).map(([key, value]) => ({
+      key,
+      value: value == null ? '' : String(value),
+      confidence: doc.confidence ?? 0,
+    })),
+  };
+}
+
+function normalizeNasabahRecord(record) {
+  const completeness = record.completeness && typeof record.completeness === 'object'
+    ? record.completeness
+    : {};
+  const fullName = record.fullName || '';
+  const nik = record.nik || '';
+
+  return {
+    id: record.id,
+    fullName,
+    nik,
+    documentCount: record.documentCount ?? (Array.isArray(record.documentIds) ? record.documentIds.length : 0),
+    completenessScore: record.completenessScore ?? 0,
+    missing: Array.isArray(record.missing)
+      ? record.missing
+      : (Array.isArray(completeness.missing) ? completeness.missing : []),
+    warnings: Array.isArray(record.warnings)
+      ? record.warnings
+      : (Array.isArray(completeness.warnings) ? completeness.warnings : []),
+  };
+}
+
+function normalizeResultSummary(job, normalizedJob, documents, nasabah) {
+  const result = job.result && typeof job.result === 'object' ? job.result : {};
+  const normalizedNasabah = Array.isArray(result.nasabah) && result.nasabah.length > 0
+    ? result.nasabah.map(normalizeNasabahRecord)
+    : nasabah;
+  const visibleNasabah = normalizedNasabah.filter((record) => !isUnidentifiedNasabah(record));
+  const unidentifiedNasabahIds = new Set(
+    normalizedNasabah
+      .filter((record) => isUnidentifiedNasabah(record))
+      .map((record) => record.id)
+  );
+
+  return {
+    totalFiles: result.totalFiles ?? normalizedJob.totalFiles ?? 0,
+    totalPages: result.totalPages ?? normalizedJob.totalPages ?? 0,
+    processedPages: result.processedPages ?? normalizedJob.processedPages ?? 0,
+    failedPages: result.failedPages ?? 0,
+    totalDocuments: result.totalDocuments ?? documents.length,
+    totalNasabah: visibleNasabah.length,
+    unidentifiedDocuments: result.unidentifiedDocuments
+      ?? documents.filter((doc) => !doc.nasabahId || unidentifiedNasabahIds.has(doc.nasabahId)).length,
+    nasabah: visibleNasabah,
+  };
+}
+
 /**
  * Get job status and results.
  */
@@ -162,7 +257,7 @@ async function getJobStatus(jobId) {
   if (!job) {
     throw createHttpError(404, 'Bulk processing job not found');
   }
-  return job;
+  return normalizeJob(job);
 }
 
 /**
@@ -180,10 +275,16 @@ async function getJobDetails(jobId) {
     repository.getPagesByJob(jobId),
   ]);
 
+  const normalizedDocuments = documents.map(normalizeDocument);
+  const normalizedNasabah = nasabah.map(normalizeNasabahRecord);
+  const normalizedJob = normalizeJob(job);
+  const result = normalizeResultSummary(job, normalizedJob, normalizedDocuments, normalizedNasabah);
+
   return {
-    ...job,
-    documents,
-    nasabah,
+    ...normalizedJob,
+    result,
+    documents: normalizedDocuments,
+    nasabah: result.nasabah,
     pages: pages.map((p) => ({
       id: p.id,
       sourceFilename: p.sourceFilename,
@@ -212,7 +313,23 @@ async function getPageOcrData(jobId, pageId) {
  * List all jobs (recent first).
  */
 async function listJobs(limit) {
-  return repository.listJobs(limit);
+  const jobs = await repository.listJobs(limit);
+  return jobs.map(normalizeJob);
+}
+
+/**
+ * Delete a job and all associated data.
+ */
+async function deleteJob(jobId) {
+  const job = await repository.findJobById(jobId);
+  if (!job) {
+    throw createHttpError(404, 'Bulk processing job not found');
+  }
+  await repository.deleteJob(jobId);
+}
+
+async function deleteNasabah(nasabahId) {
+  await repository.deleteNasabah(nasabahId);
 }
 
 module.exports = {
@@ -221,4 +338,6 @@ module.exports = {
   getJobDetails,
   getPageOcrData,
   listJobs,
+  deleteJob,
+  deleteNasabah,
 };
