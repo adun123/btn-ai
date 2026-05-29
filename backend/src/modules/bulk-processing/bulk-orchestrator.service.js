@@ -278,12 +278,17 @@ async function processJob(jobId, files, batchSize) {
  * Process a single batch of pages through OCR.
  */
 async function processBatch(batchPages) {
-  const images = batchPages.map((page) => ({
-    base64Data: page.base64Data,
-    mimeType: page.mimeType,
-    filename: `${page.sourceFilename}_p${page.pageNumber}`,
-    pageId: page.id,
-  }));
+  const images = batchPages.map((page) => {
+    const dotIdx = page.sourceFilename.lastIndexOf('.');
+    const name = dotIdx > 0 ? page.sourceFilename.slice(0, dotIdx) : page.sourceFilename;
+    const ext = dotIdx > 0 ? page.sourceFilename.slice(dotIdx) : '.jpg';
+    return {
+      base64Data: page.base64Data,
+      mimeType: page.mimeType,
+      filename: `${name}_p${page.pageNumber}${ext}`,
+      pageId: page.id,
+    };
+  });
 
   return ocrBatch(images, { concurrency: OCR_CONCURRENCY });
 }
