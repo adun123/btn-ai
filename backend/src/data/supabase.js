@@ -7,6 +7,18 @@ function getEnv(name) {
   return process.env[name] ? String(process.env[name]).trim() : '';
 }
 
+function isSupabaseConfigured() {
+  return Boolean(getEnv('SUPABASE_URL') && getEnv('SUPABASE_SERVICE_ROLE_KEY'));
+}
+
+function getSupabaseEnvDiagnostics() {
+  return {
+    configured: isSupabaseConfigured(),
+    urlConfigured: Boolean(getEnv('SUPABASE_URL')),
+    serviceRoleKeyConfigured: Boolean(getEnv('SUPABASE_SERVICE_ROLE_KEY')),
+  };
+}
+
 function getSupabase() {
   if (supabaseClient) {
     return supabaseClient;
@@ -44,5 +56,7 @@ function unwrapSupabase(result, action) {
 
 module.exports = {
   getSupabase,
+  isSupabaseConfigured,
+  getSupabaseEnvDiagnostics,
   unwrapSupabase,
 };
