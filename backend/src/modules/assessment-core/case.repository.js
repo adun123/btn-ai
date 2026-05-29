@@ -26,6 +26,7 @@ function buildEvidenceMap(rows) {
 }
 
 async function hydrateCases(caseRows) {
+  // Case list/detail responses include evidence metadata, so repository reads both tables together here.
   const evidenceRows = await loadEvidenceRows(caseRows.map((row) => row.id));
   const evidenceByCaseId = buildEvidenceMap(evidenceRows);
 

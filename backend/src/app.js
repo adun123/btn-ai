@@ -8,13 +8,14 @@ const healthRoutes = require('./modules/health/health.routes');
 const caseRoutes = require('./modules/assessment-core/case.routes');
 const evidenceRoutes = require('./modules/evidence-documents/evidence.routes');
 const extractionRoutes = require('./modules/extraction/extraction.routes');
+const bulkRoutes = require('./modules/bulk-processing/bulk.routes');
 
 const app = express();
 
 app.use(cors({ origin: process.env.CORS_ORIGIN || '*' }));
 
-app.use(express.json({ limit: '12mb' }));
-app.use(express.urlencoded({ extended: true, limit: '12mb' }));
+app.use(express.json({ limit: '50mb' }));
+app.use(express.urlencoded({ extended: true, limit: '50mb' }));
 
 app.use('/api-docs', swaggerUi.serve, swaggerUi.setup(openApiSpec, {
   explorer: true,
@@ -28,9 +29,13 @@ app.use('/api', healthRoutes);
 app.use('/cases', caseRoutes);
 app.use('/cases', evidenceRoutes);
 app.use('/cases', extractionRoutes);
+app.use('/bulk', bulkRoutes);
 app.use('/api/cases', caseRoutes);
 app.use('/api/cases', evidenceRoutes);
 app.use('/api/cases', extractionRoutes);
+app.use('/api/bulk', bulkRoutes);
+
+
 
 app.use(notFoundHandler);
 app.use(errorHandler);

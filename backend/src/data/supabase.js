@@ -7,7 +7,20 @@ function getEnv(name) {
   return process.env[name] ? String(process.env[name]).trim() : '';
 }
 
+function isSupabaseConfigured() {
+  return Boolean(getEnv('SUPABASE_URL') && getEnv('SUPABASE_SERVICE_ROLE_KEY'));
+}
+
+function getSupabaseEnvDiagnostics() {
+  return {
+    configured: isSupabaseConfigured(),
+    urlConfigured: Boolean(getEnv('SUPABASE_URL')),
+    serviceRoleKeyConfigured: Boolean(getEnv('SUPABASE_SERVICE_ROLE_KEY')),
+  };
+}
+
 function getSupabase() {
+  // Keep one Supabase client per Node.js process so every repository shares the same persistence boundary.
   if (supabaseClient) {
     return supabaseClient;
   }
@@ -34,6 +47,7 @@ function unwrapSupabase(result, action) {
     return result.data;
   }
 
+  // Repackage provider-specific errors into the API's standard error shape.
   throw createHttpError(500, `Supabase ${action} failed`, {
     code: result.error.code || null,
     message: result.error.message,
@@ -44,5 +58,7 @@ function unwrapSupabase(result, action) {
 
 module.exports = {
   getSupabase,
+  isSupabaseConfigured,
+  getSupabaseEnvDiagnostics,
   unwrapSupabase,
 };

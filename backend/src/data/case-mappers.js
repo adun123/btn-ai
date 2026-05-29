@@ -19,6 +19,7 @@ function mapEvidenceRow(row) {
 }
 
 function mapCaseRowToRecord(row, evidence = []) {
+  // API responses use camelCase while Supabase rows stay close to the SQL snake_case schema.
   return {
     id: row.id,
     referenceNumber: row.reference_number,
@@ -37,6 +38,7 @@ function mapCaseRowToRecord(row, evidence = []) {
 }
 
 function toCaseRow(record) {
+  // Centralize the inverse mapping so services do not need to know database column names.
   return {
     id: record.id,
     reference_number: record.referenceNumber,

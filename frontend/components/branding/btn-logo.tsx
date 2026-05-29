@@ -9,6 +9,7 @@ type BtnLogoProps = {
 
 export function BtnLogo({ className = '', height = 40, priority = true }: BtnLogoProps) {
   const width = Math.round((height * 240) / 48);
+
   return (
     <Image
       src="/logo-btn.png"
@@ -16,7 +17,7 @@ export function BtnLogo({ className = '', height = 40, priority = true }: BtnLog
       width={width}
       height={height}
       priority={priority}
-      className={`h-auto w-auto shrink-0 ${className}`.trim()}
+      className={`block h-auto w-auto shrink-0 object-contain ${className}`.trim()}
     />
   );
 }
