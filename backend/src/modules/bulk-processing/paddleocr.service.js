@@ -12,18 +12,20 @@
 const { createHttpError } = require('../../utils/httpError');
 
 const DEFAULT_API_URL = 'https://paddleocr.aistudio-app.com/api/v2/ocr/jobs';
+const DEFAULT_MODEL = 'PP-OCRv5';
 const MAX_POLL_ATTEMPTS = 60;
-const POLL_INTERVAL_MS = 1000;
+const POLL_INTERVAL_MS = 5000;
 
 function getConfig() {
   const apiUrl = (process.env.PADDLEOCR_API_URL || DEFAULT_API_URL).trim();
   const token = (process.env.PADDLEOCR_TOKEN || '').trim();
+  const model = (process.env.PADDLEOCR_MODEL || DEFAULT_MODEL).trim();
 
   if (!token) {
     throw createHttpError(503, 'PADDLEOCR_TOKEN is not configured. Get token from https://aistudio.baidu.com/paddleocr/task');
   }
 
-  return { apiUrl, token };
+  return { apiUrl, token, model };
 }
 
 function sleep(ms) {
@@ -36,19 +38,24 @@ function sleep(ms) {
  * @returns {{ text: string, confidence: number, raw: object }}
  */
 async function ocrSingleImage({ base64Data, mimeType, filename }) {
-  const { apiUrl, token } = getConfig();
+  const { apiUrl, token, model } = getConfig();
+
+  // Build multipart form data (PaddleOCR API requires 'file' + 'model')
+  const buffer = Buffer.from(base64Data, 'base64');
+  const ext = mimeType.includes('png') ? 'png' : mimeType.includes('pdf') ? 'pdf' : 'jpg';
+  const fname = filename || `page.${ext}`;
+
+  const formData = new FormData();
+  formData.append('file', new File([buffer], fname, { type: mimeType }));
+  formData.append('model', model);
 
   // Step 1: Create job
   const createResponse = await fetch(apiUrl, {
     method: 'POST',
     headers: {
-      'Content-Type': 'application/json',
       Authorization: `Bearer ${token}`,
     },
-    body: JSON.stringify({
-      image: `data:${mimeType};base64,${base64Data}`,
-      file_name: filename || 'page.png',
-    }),
+    body: formData,
   });
 
   if (!createResponse.ok) {
@@ -57,18 +64,10 @@ async function ocrSingleImage({ base64Data, mimeType, filename }) {
   }
 
   const createData = await createResponse.json();
-  const jobId = createData.result?.jobId || createData.jobId || createData.id;
+  const jobId = createData.data?.jobId || createData.jobId || createData.id;
 
   if (!jobId) {
-    // Some API versions return result inline (no polling needed)
-    if (createData.result?.texts || createData.result?.ocrResults) {
-      return normalizeInlineResult(createData.result);
-    }
-    // Try treating the whole response as a direct result
-    if (createData.texts || createData.ocrResults) {
-      return normalizeInlineResult(createData);
-    }
-    throw createHttpError(502, 'PaddleOCR returned no job ID and no inline result', { raw: JSON.stringify(createData).slice(0, 1000) });
+    throw createHttpError(502, 'PaddleOCR returned no job ID', { raw: JSON.stringify(createData).slice(0, 1000) });
   }
 
   // Step 2: Poll for result
@@ -81,25 +80,83 @@ async function ocrSingleImage({ base64Data, mimeType, filename }) {
     });
 
     if (!pollResponse.ok) {
-      if (pollResponse.status === 404) continue; // Job not ready yet
+      if (pollResponse.status === 404) continue;
       const errText = await pollResponse.text().catch(() => '');
       throw createHttpError(502, `PaddleOCR poll failed (${pollResponse.status})`, { detail: errText.slice(0, 500) });
     }
 
     const pollData = await pollResponse.json();
-    const status = pollData.status || pollData.result?.status;
+    const state = pollData.data?.state || pollData.state;
 
-    if (status === 'completed' || status === 'success' || status === 'done') {
-      return normalizeInlineResult(pollData.result || pollData);
+    if (state === 'done') {
+      // Result is in a JSONL URL — fetch and parse
+      const resultUrl = pollData.data?.resultUrl?.jsonUrl;
+      if (resultUrl) {
+        return await fetchAndParseResult(resultUrl, model);
+      }
+      // Fallback: inline result
+      return normalizeInlineResult(pollData.data || pollData);
     }
 
-    if (status === 'failed' || status === 'error') {
-      throw createHttpError(502, 'PaddleOCR job failed', { detail: pollData.error || pollData.message || '' });
+    if (state === 'failed') {
+      const errorMsg = pollData.data?.errorMsg || pollData.error || 'Unknown';
+      throw createHttpError(502, `PaddleOCR job failed: ${errorMsg}`);
     }
-    // else: still processing, continue polling
+    // else: pending/running, continue polling
   }
 
   throw createHttpError(504, 'PaddleOCR job timed out after polling');
+}
+
+/**
+ * Fetch JSONL result URL and extract text.
+ */
+async function fetchAndParseResult(jsonlUrl, model) {
+  const response = await fetch(jsonlUrl);
+  if (!response.ok) {
+    throw createHttpError(502, `Failed to fetch PaddleOCR result (${response.status})`);
+  }
+
+  const text = await response.text();
+  const lines = text.trim().split('\n').filter(Boolean);
+
+  const allTexts = [];
+  let totalConfidence = 0;
+  let count = 0;
+
+  for (const line of lines) {
+    const parsed = JSON.parse(line);
+    const result = parsed.result;
+
+    if (result?.ocrResults) {
+      // PP-OCRv5 format: ocrResults[].prunedResult.rec_texts / rec_scores
+      for (const page of result.ocrResults) {
+        const pruned = page.prunedResult || page;
+        const texts = pruned.rec_texts || pruned.texts || [];
+        const scores = pruned.rec_scores || pruned.scores || [];
+        allTexts.push(...texts);
+        if (scores.length) {
+          totalConfidence += scores.reduce((a, b) => a + b, 0);
+          count += scores.length;
+        }
+      }
+    } else if (result?.layoutParsingResults) {
+      // PaddleOCR-VL / PP-StructureV3 format
+      for (const page of result.layoutParsingResults) {
+        if (page.markdown?.text) {
+          allTexts.push(page.markdown.text);
+          count += 1;
+          totalConfidence += 0.9;
+        }
+      }
+    }
+  }
+
+  return {
+    text: allTexts.join('\n'),
+    confidence: count > 0 ? totalConfidence / count : 0.5,
+    raw: { jsonlUrl, lineCount: lines.length },
+  };
 }
 
 /**
