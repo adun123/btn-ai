@@ -13,7 +13,7 @@ function errorHandler(err, req, res, next) {
     const status = err.code === 'LIMIT_FILE_SIZE' ? 413 : 400;
     return res.status(status).json({
       success: false,
-      error: err.code === 'LIMIT_FILE_SIZE' ? 'Uploaded file exceeds the 10MB limit' : 'Multipart upload failed',
+      error: err.code === 'LIMIT_FILE_SIZE' ? 'Uploaded file exceeds the size limit' : 'Multipart upload failed',
       details: { code: err.code },
     });
   }

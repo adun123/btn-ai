@@ -2,28 +2,29 @@
  * Document Classification Service
  *
  * Classifies OCR text into document types using rule-based keyword/pattern matching.
- * Falls back to LLM (Gemini) for ambiguous cases.
  *
- * Supported document types:
+ * Supported document types (22 tipe):
  *   ktp, kk, slip_gaji, npwp, rekening_koran, sertifikat_tanah,
  *   imb, pbb, ajb, akta_nikah, akta_cerai, spt_pajak,
- *   surat_keterangan_kerja, foto_properti, denah, unknown
+ *   surat_keterangan_kerja, formulir_aplikasi, pas_foto,
+ *   surat_pemesanan_rumah, nib, laporan_keuangan, info_usaha,
+ *   siup_tdp, akta_pendirian, izin_praktik, unknown
  */
 
 const DOCUMENT_TYPES = {
   ktp: {
-    keywords: ['kartu tanda penduduk', 'nik', 'provinsi', 'kabupaten', 'kecamatan', 'kelurahan', 'berlaku hingga', 'tempat/tgl lahir', 'jenis kelamin', 'gol. darah', 'agama', 'status perkawinan', 'pekerjaan', 'kewarganegaraan', 'rt/rw'],
-    patterns: [/\b\d{16}\b/, /NIK\s*[:\-]?\s*\d{16}/i, /berlaku\s*hingga/i, /KARTU TANDA PENDUDUK/i],
+    keywords: ['ktp', 'kartu tanda penduduk', 'nik', 'provinsi', 'kabupaten', 'kecamatan', 'kelurahan', 'berlaku hingga', 'tempat/tgl lahir', 'jenis kelamin', 'gol. darah', 'agama', 'status perkawinan', 'pekerjaan', 'kewarganegaraan', 'rt/rw'],
+    patterns: [/\bKTP\b/i, /\b\d{16}\b/, /NIK\s*[:\-]?\s*\d{16}/i, /berlaku\s*hingga/i, /KARTU TANDA PENDUDUK/i],
     weight: 1.0,
   },
   kk: {
-    keywords: ['kartu keluarga', 'kepala keluarga', 'nomor kk', 'no. kk', 'anggota keluarga', 'hubungan keluarga', 'desa/kelurahan', 'kabupaten/kota'],
-    patterns: [/KARTU KELUARGA/i, /No\.?\s*KK/i, /Kepala Keluarga/i, /\b\d{16}\b/],
+    keywords: ['kk', 'kartu keluarga', 'kepala keluarga', 'nomor kk', 'no. kk', 'anggota keluarga', 'hubungan keluarga', 'desa/kelurahan', 'kabupaten/kota'],
+    patterns: [/\bKK\b/i, /KARTU KELUARGA/i, /No\.?\s*KK/i, /Kepala Keluarga/i, /\b\d{16}\b/],
     weight: 1.0,
   },
   slip_gaji: {
-    keywords: ['slip gaji', 'gaji pokok', 'tunjangan', 'potongan', 'take home pay', 'netto', 'bruto', 'upah', 'honorarium', 'lembur', 'bpjs', 'pph 21', 'periode gaji'],
-    patterns: [/gaji\s*pokok/i, /take\s*home\s*pay/i, /tunjangan/i, /potongan/i, /slip\s*gaji/i, /payslip/i],
+    keywords: ['slip gaji', 'gaji pokok', 'tunjangan', 'potongan', 'take home pay', 'netto', 'bruto', 'upah', 'honorarium', 'lembur', 'bpjs', 'pph 21', 'periode gaji', 'surat keterangan penghasilan'],
+    patterns: [/gaji\s*pokok/i, /take\s*home\s*pay/i, /tunjangan/i, /potongan/i, /slip\s*gaji/i, /payslip/i, /keterangan\s*penghasilan/i],
     weight: 1.0,
   },
   npwp: {
@@ -57,13 +58,13 @@ const DOCUMENT_TYPES = {
     weight: 1.0,
   },
   akta_nikah: {
-    keywords: ['akta nikah', 'kutipan akta nikah', 'kantor urusan agama', 'kua', 'suami', 'isteri', 'perkawinan'],
-    patterns: [/akta\s*nikah/i, /Kantor Urusan Agama/i, /KUA/i, /perkawinan/i],
+    keywords: ['akta nikah', 'kutipan akta nikah', 'kantor urusan agama', 'kua', 'suami', 'isteri', 'perkawinan', 'buku nikah', 'akta perkawinan'],
+    patterns: [/akta\s*nikah/i, /Kantor Urusan Agama/i, /KUA/i, /perkawinan/i, /buku\s*nikah/i],
     weight: 1.0,
   },
   akta_cerai: {
-    keywords: ['akta cerai', 'perceraian', 'pengadilan agama', 'putusan'],
-    patterns: [/akta\s*cerai/i, /perceraian/i, /pengadilan\s*agama/i],
+    keywords: ['akta cerai', 'perceraian', 'pengadilan agama', 'putusan', 'cerai talak', 'cerai gugat'],
+    patterns: [/akta\s*cerai/i, /perceraian/i, /pengadilan\s*agama/i, /cerai\s*(talak|gugat)/i],
     weight: 1.0,
   },
   spt_pajak: {
@@ -72,9 +73,55 @@ const DOCUMENT_TYPES = {
     weight: 1.0,
   },
   surat_keterangan_kerja: {
-    keywords: ['surat keterangan', 'menerangkan bahwa', 'karyawan', 'jabatan', 'sejak tanggal', 'perusahaan'],
-    patterns: [/surat\s*keterangan/i, /menerangkan\s*bahwa/i],
-    weight: 0.8,
+    keywords: ['surat keterangan', 'menerangkan bahwa', 'karyawan', 'jabatan', 'sejak tanggal', 'perusahaan', 'surat keterangan kerja', 'masih aktif bekerja'],
+    patterns: [/surat\s*keterangan\s*kerja/i, /menerangkan\s*bahwa/i, /masih\s*aktif\s*bekerja/i],
+    weight: 0.9,
+  },
+  // ─── NEW DOCUMENT TYPES ─────────────────────────────────────────────────────
+  formulir_aplikasi: {
+    keywords: ['formulir aplikasi', 'aplikasi kredit', 'permohonan kredit', 'data pemohon', 'jenis kredit', 'jangka waktu kredit', 'tujuan penggunaan', 'plafon kredit', 'angsuran', 'kpr', 'kredit pemilikan rumah', 'data pekerjaan', 'data penghasilan'],
+    patterns: [/formulir\s*aplikasi/i, /aplikasi\s*kredit/i, /permohonan\s*kredit/i, /kredit\s*pemilikan\s*rumah/i, /plafon\s*kredit/i, /data\s*pemohon/i],
+    weight: 1.0,
+  },
+  pas_foto: {
+    keywords: ['pas foto', 'foto pemohon', 'foto pasangan'],
+    patterns: [/pas\s*foto/i, /\bfoto\s*(pemohon|pasangan)\b/i],
+    weight: 0.6,
+  },
+  surat_pemesanan_rumah: {
+    keywords: ['surat pemesanan rumah', 'pemesanan unit', 'booking', 'kavling', 'tipe rumah', 'lokasi perumahan', 'developer', 'pengembang', 'harga jual', 'uang muka', 'down payment', 'surat pesanan'],
+    patterns: [/surat\s*pemesanan\s*rumah/i, /pemesanan\s*unit/i, /surat\s*pesanan/i, /harga\s*jual/i, /uang\s*muka/i, /down\s*payment/i],
+    weight: 1.0,
+  },
+  nib: {
+    keywords: ['nomor induk berusaha', 'nib', 'oss', 'online single submission', 'perizinan berusaha', 'lembaga oss', 'kbli', 'klasifikasi baku lapangan usaha'],
+    patterns: [/NIB/i, /Nomor Induk Berusaha/i, /Online Single Submission/i, /OSS/i, /\b\d{13}\b/],
+    weight: 1.0,
+  },
+  laporan_keuangan: {
+    keywords: ['laporan keuangan', 'neraca', 'laba rugi', 'arus kas', 'pendapatan', 'beban', 'aset', 'kewajiban', 'modal', 'catatan keuangan', 'omzet', 'penjualan', 'pembelian', 'laba bersih', 'laba kotor'],
+    patterns: [/laporan\s*keuangan/i, /laba\s*rugi/i, /neraca/i, /arus\s*kas/i, /catatan\s*keuangan/i, /laba\s*(bersih|kotor)/i],
+    weight: 1.0,
+  },
+  info_usaha: {
+    keywords: ['informasi usaha', 'profil usaha', 'alamat usaha', 'lokasi usaha', 'jam operasional', 'waktu operasional', 'foto usaha', 'titik lokasi', 'jenis usaha', 'bidang usaha'],
+    patterns: [/informasi\s*usaha/i, /profil\s*usaha/i, /lokasi\s*usaha/i, /jam\s*operasional/i, /waktu\s*operasional/i],
+    weight: 0.9,
+  },
+  siup_tdp: {
+    keywords: ['siup', 'surat izin usaha perdagangan', 'tdp', 'tanda daftar perusahaan', 'izin usaha', 'perdagangan', 'menengah', 'kecil', 'besar'],
+    patterns: [/SIUP/i, /TDP/i, /Surat Izin Usaha Perdagangan/i, /Tanda Daftar Perusahaan/i],
+    weight: 1.0,
+  },
+  akta_pendirian: {
+    keywords: ['akta pendirian', 'pendirian perseroan', 'notaris', 'anggaran dasar', 'depkumham', 'kemenkumham', 'kementerian hukum', 'pengesahan', 'badan hukum', 'perseroan terbatas'],
+    patterns: [/akta\s*pendirian/i, /pendirian\s*perseroan/i, /DEPKUMHAM/i, /KEMENKUMHAM/i, /anggaran\s*dasar/i, /pengesahan\s*badan\s*hukum/i],
+    weight: 1.0,
+  },
+  izin_praktik: {
+    keywords: ['izin praktik', 'surat izin praktik', 'str', 'surat tanda registrasi', 'profesi', 'asosiasi', 'ikatan', 'perhimpunan', 'praktik mandiri', 'sip'],
+    patterns: [/izin\s*praktik/i, /surat\s*izin\s*praktik/i, /SIP/i, /STR/i, /Surat Tanda Registrasi/i],
+    weight: 1.0,
   },
 };
 
@@ -84,11 +131,14 @@ const DOCUMENT_TYPES = {
  * @returns {{ documentType: string, confidence: number, method: string, matchedKeywords: string[] }}
  */
 function classifyText(ocrText) {
-  if (!ocrText || ocrText.trim().length < 10) {
+  const trimmedText = ocrText?.trim();
+  const allowShortTextClassification = /^(ktp|kk|npwp|nib|imb|spt)$/i.test(trimmedText || '') || /pas\s*foto/i.test(trimmedText || '');
+
+  if (!trimmedText || (trimmedText.length < 10 && !allowShortTextClassification)) {
     return { documentType: 'unknown', confidence: 0, method: 'empty_text', matchedKeywords: [] };
   }
 
-  const textLower = ocrText.toLowerCase();
+  const textLower = trimmedText.toLowerCase();
   const scores = {};
 
   for (const [docType, config] of Object.entries(DOCUMENT_TYPES)) {
