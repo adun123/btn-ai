@@ -1,7 +1,7 @@
 const { GoogleGenerativeAI } = require('@google/generative-ai');
 const { createHttpError } = require('../../utils/httpError');
 
-const DEFAULT_MODEL = process.env.GEMINI_MODEL || 'gemini-3-flash-preview';
+const DEFAULT_MODEL = process.env.GEMINI_MODEL || 'gemini-2.5-flash';
 
 const DOCUMENT_FIELD_TEMPLATES = {
   ktp: ['nik', 'full_name', 'birth_place', 'birth_date', 'address', 'rt_rw', 'kelurahan', 'kecamatan', 'religion', 'marital_status', 'occupation'],
