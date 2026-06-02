@@ -81,9 +81,11 @@ export function BulkUploadStep({ onComplete, onViewResult }: { onComplete: (jobI
         };
         poll();
       }
-    } catch {
+    } catch (err) {
+      console.error('[BulkUpload] Upload/process error:', err);
       if (!cancelled) {
-        setError('Upload/proses gagal. Pastikan backend berjalan.');
+        const msg = err instanceof Error ? err.message : String(err);
+        setError(`Upload/proses gagal: ${msg}`);
         setUploading(false);
       }
     }

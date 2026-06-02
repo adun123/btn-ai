@@ -38,12 +38,17 @@ export const bulkApi = {
     await Promise.all(
       presignData.urls.map(async (urlInfo, i) => {
         const file = files[i];
+        console.log(`[bulkApi] uploading ${file.name} to ${urlInfo.signedUrl.split('?')[0]}`);
         const res = await fetch(urlInfo.signedUrl, {
           method: 'PUT',
           headers: { 'Content-Type': file.type },
           body: file,
         });
-        if (!res.ok) throw new ApiError(`Failed to upload ${file.name}`, res.status);
+        if (!res.ok) {
+          const body = await res.text().catch(() => '');
+          console.error(`[bulkApi] upload failed for ${file.name}: ${res.status} ${body}`);
+          throw new ApiError(`Failed to upload ${file.name}`, res.status);
+        }
       })
     );
 
@@ -60,7 +65,11 @@ export const bulkApi = {
         })),
       }),
     });
-    if (!processRes.ok) throw new ApiError('Processing failed', processRes.status);
+    if (!processRes.ok) {
+      const body = await processRes.text().catch(() => '');
+      console.error(`[bulkApi] process-storage failed: ${processRes.status} ${body}`);
+      throw new ApiError('Processing failed', processRes.status);
+    }
     const { data } = await processRes.json() as ApiEnvelope<{ jobId: string; status: string }>;
     return data;
   },

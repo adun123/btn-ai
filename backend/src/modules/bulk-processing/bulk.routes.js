@@ -151,9 +151,12 @@ router.delete('/jobs/:jobId', async (req, res, next) => {
 
 router.delete('/jobs/:jobId/nasabah/:nasabahId', async (req, res, next) => {
   try {
+    console.log(`[deleteNasabah] jobId=${req.params.jobId} nasabahId=${req.params.nasabahId}`);
     await service.deleteNasabah(req.params.nasabahId);
+    console.log(`[deleteNasabah] success nasabahId=${req.params.nasabahId}`);
     res.json({ success: true });
   } catch (error) {
+    console.error(`[deleteNasabah] error:`, error);
     next(error);
   }
 });
@@ -294,15 +297,20 @@ router.post('/process-storage', async (req, res, next) => {
       return res.status(400).json({ success: false, error: 'uploadId and files are required' });
     }
 
+    console.log(`[process-storage] uploadId=${uploadId} files=${JSON.stringify(files.map(f => ({ filename: f.filename, path: f.path, contentType: f.contentType })))}`);
+
     const downloaded = await storageService.downloadFromStorage(uploadId, files);
-    const uploadType = downloaded.length === 1 && downloaded[0].mimetype.includes('zip') ? 'zip' : 'bulk_files';
+    console.log(`[process-storage] downloaded ${downloaded.length} file(s): ${downloaded.map(f => `${f.originalname} (${f.size} bytes)`).join(', ')}`);
+
     const result = await service.handleBulkUpload(downloaded);
+    console.log(`[process-storage] job created: ${JSON.stringify(result)}`);
 
     // Cleanup storage in background
-    storageService.cleanupUpload(uploadId).catch(() => {});
+    storageService.cleanupUpload(uploadId).catch((e) => console.warn('[process-storage] cleanup failed:', e.message));
 
     res.status(202).json({ success: true, data: result });
   } catch (error) {
+    console.error('[process-storage] error:', error);
     next(error);
   }
 });

@@ -170,11 +170,28 @@ async function getNasabahByJob(jobId) {
 
 async function deleteNasabah(nasabahId) {
   const supabase = getSupabase();
+
+  // Get nasabah to find job_id
+  const { data: nasabah } = await supabase.from('bulk_nasabah').select('job_id').eq('id', nasabahId).maybeSingle();
+
   // Delete associated documents
   await supabase.from('bulk_documents').delete().eq('nasabah_id', nasabahId);
-  // Delete nasabah
+  // Delete nasabah row
   const result = await supabase.from('bulk_nasabah').delete().eq('id', nasabahId);
   if (result.error) unwrapSupabase(result, 'delete nasabah');
+
+  // Also remove from job.result JSONB cache so it doesn't reappear on refresh
+  if (nasabah?.job_id) {
+    const { data: job } = await supabase.from('bulk_jobs').select('result').eq('id', nasabah.job_id).maybeSingle();
+    if (job?.result?.nasabah) {
+      const updatedResult = {
+        ...job.result,
+        nasabah: job.result.nasabah.filter(n => n.id !== nasabahId),
+        totalNasabah: Math.max(0, (job.result.totalNasabah ?? job.result.nasabah.length) - 1),
+      };
+      await supabase.from('bulk_jobs').update({ result: updatedResult }).eq('id', nasabah.job_id);
+    }
+  }
 }
 
 // ─── Row Mappers ────────────────────────────────────────────────────────────

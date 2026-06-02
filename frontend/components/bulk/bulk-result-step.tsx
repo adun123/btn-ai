@@ -608,21 +608,26 @@ export function BulkResultStep({ jobId, onReset }: { jobId: string; onReset: () 
     });
   }, []);
 
-  const handleDeleteNasabah = useCallback((nasabahId: string) => {
+  const handleDeleteNasabah = useCallback(async (nasabahId: string) => {
     if (!confirm('Hapus nasabah ini beserta semua dokumennya?')) return;
-    bulkApi.deleteNasabah(jobId, nasabahId).catch(() => {});
-    setData(prev => {
-      if (!prev) return prev;
-      return {
-        ...prev,
-        result: {
-          ...prev.result,
-          totalNasabah: prev.result.totalNasabah - 1,
-          nasabah: prev.result.nasabah.filter(n => n.id !== nasabahId),
-        },
-        documents: prev.documents.filter(d => d.nasabahId !== nasabahId),
-      };
-    });
+    try {
+      await bulkApi.deleteNasabah(jobId, nasabahId);
+      setData(prev => {
+        if (!prev) return prev;
+        return {
+          ...prev,
+          result: {
+            ...prev.result,
+            totalNasabah: prev.result.totalNasabah - 1,
+            nasabah: prev.result.nasabah.filter(n => n.id !== nasabahId),
+          },
+          documents: prev.documents.filter(d => d.nasabahId !== nasabahId),
+        };
+      });
+    } catch (err) {
+      console.error('[BulkResult] deleteNasabah failed:', err);
+      alert(`Gagal menghapus: ${err instanceof Error ? err.message : String(err)}`);
+    }
   }, [jobId]);
 
   // --- Derived data ---
