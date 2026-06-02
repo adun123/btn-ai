@@ -60,16 +60,18 @@ async function downloadFromStorage(uploadId, files) {
   const downloaded = [];
 
   for (const file of files) {
+    console.log(`[BulkStorage] downloading ${file.path} from bucket ${BUCKET}`);
     const { data, error } = await supabase.storage
       .from(BUCKET)
       .download(file.path);
 
     if (error) {
-      console.error(`[BulkStorage] Failed to download ${file.path}:`, error.message);
-      continue;
+      console.error(`[BulkStorage] download failed for ${file.path}: ${error.message} (status: ${error.status ?? 'unknown'})`);
+      throw createHttpError(500, `Failed to download ${file.filename} from storage: ${error.message}`);
     }
 
     const buffer = Buffer.from(await data.arrayBuffer());
+    console.log(`[BulkStorage] downloaded ${file.filename}: ${buffer.length} bytes`);
     downloaded.push({
       buffer,
       originalname: file.filename,
