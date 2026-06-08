@@ -728,7 +728,7 @@ export function BulkResultStep({ jobId, onReset }: { jobId: string; onReset: () 
 
   const nasabahWithStatus = useMemo(() => {
     if (!data) return [];
-    return data.result.nasabah.map(n => ({ ...n, _status: getNasabahStatus(n) }));
+    return data.result.nasabah.map(n => ({ ...n, _status: getNasabahStatus(n, data.documents) }));
   }, [data]);
 
   const filtered = useMemo(() => {
@@ -756,7 +756,7 @@ export function BulkResultStep({ jobId, onReset }: { jobId: string; onReset: () 
           </div>
           <h1 className="mt-3 text-2xl font-bold">Hasil Pemrosesan Dokumen</h1>
           <p className="mt-1 text-sm text-muted">
-            {data.result.totalNasabah} nasabah • {data.documents.length} dokumen • {data.result.totalPages} halaman
+            {data.result.totalNasabah} nasabah • {data.result.totalDocuments} dokumen • {data.result.totalPages} halaman
           </p>
         </div>
         <div className="flex gap-3">
