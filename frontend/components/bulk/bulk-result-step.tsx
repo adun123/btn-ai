@@ -94,6 +94,62 @@ function ConfidenceBar({ score }: { score: number }) {
 }
 
 
+// --- Helpers ---
+
+/** Filter out Gemini OCR image placeholders like [Image 1], [Image 2], etc. */
+function isImagePlaceholder(value: string): boolean {
+  return /^\[Image \d+\]$/.test(value.trim());
+}
+
+/** Recursively convert any value to a readable string */
+function formatValue(value: unknown, depth = 0): string {
+  if (value === null || value === undefined) return '';
+  if (typeof value === 'string') {
+    // Try parsing JSON strings
+    if ((value.startsWith('{') || value.startsWith('[')) && depth < 3) {
+      try {
+        const parsed = JSON.parse(value);
+        return formatValue(parsed, depth + 1);
+      } catch { /* not JSON, treat as string */ }
+    }
+    return value;
+  }
+  if (typeof value === 'number' || typeof value === 'boolean') return String(value);
+  if (Array.isArray(value)) {
+    if (value.length === 0) return '';
+    return value.map((item, i) => {
+      const formatted = formatValue(item, depth + 1);
+      return formatted ? `${i + 1}. ${formatted}` : '';
+    }).filter(Boolean).join('\n');
+  }
+  if (typeof value === 'object') {
+    const entries = Object.entries(value);
+    if (entries.length === 0) return '';
+    return entries.map(([k, v]) => {
+      const val = formatValue(v, depth + 1);
+      if (!val) return '';
+      const label = k.replace(/_/g, ' ');
+      // Indent nested objects for readability
+      if (typeof v === 'object' && v !== null) {
+        return `${label}:\n${val.split('\n').map(line => `  ${line}`).join('\n')}`;
+      }
+      return `${label}: ${val}`;
+    }).filter(Boolean).join('\n');
+  }
+  return String(value);
+}
+
+/** Convert any field value to a displayable string */
+function toDisplayValue(value: unknown): string {
+  if (value === null || value === undefined) return '';
+  if (typeof value === 'string') {
+    if (value.trim() === '[object Object]') return '';
+    return value;
+  }
+  return formatValue(value);
+}
+
+
 // --- Document Card with Edit/Delete ---
 
 function DocumentCard({
@@ -117,9 +173,20 @@ function DocumentCard({
     setEditing(false);
   };
 
+  const handleAddField = () => {
+    setFields(prev => [...prev, { key: 'field_baru', value: '', confidence: 0 }]);
+    setEditing(true);
+  };
+
+  // Filter out [Image N] placeholders and [object Object] from display fields
+  const displayFields = fields.filter(f => {
+    const display = toDisplayValue(f.value);
+    return display && !isImagePlaceholder(display);
+  });
+
   return (
     <div className="glass-card p-5">
-      <div className="flex items-center justify-between gap-3 mb-3">
+      <div className="flex items-center justify-between gap-3 mb-4">
         <div className="flex items-center gap-3">
           <div className="rounded-xl p-2" style={{ background: 'var(--primary-soft)' }}>
             <FileText className="h-5 w-5" style={{ color: 'var(--primary)' }} />
@@ -138,23 +205,37 @@ function DocumentCard({
       </div>
 
       {/* Fields */}
-      {fields.length > 0 && (
-        <div className="grid gap-2 sm:grid-cols-2 mb-3">
-          {fields.map((f, idx) => (
-            <div key={f.key} className="rounded-xl border px-3 py-2" style={{ borderColor: 'var(--border)', background: editing ? 'var(--card)' : 'var(--primary-soft)' }}>
-              <p className="text-xs font-semibold uppercase text-muted">{f.key}</p>
-              {editing ? (
-                <input
-                  value={f.value}
-                  onChange={e => handleFieldChange(idx, e.target.value)}
-                  className="mt-1 w-full text-sm font-medium bg-transparent outline-none border-b"
-                  style={{ borderColor: 'var(--border)' }}
-                />
-              ) : (
-                <p className="mt-1 text-sm font-medium">{f.value}</p>
-              )}
-            </div>
-          ))}
+      {displayFields.length > 0 ? (
+        <div className="grid gap-3 sm:grid-cols-2 mb-4">
+          {displayFields.map((f, idx) => {
+            const displayVal = toDisplayValue(f.value);
+            return (
+              <div key={f.key} className="rounded-xl border px-4 py-3" style={{ borderColor: 'var(--border)', background: editing ? 'var(--card)' : 'var(--primary-soft)' }}>
+                <p className="text-[11px] font-semibold uppercase tracking-wide text-muted mb-1.5">{f.key.replace(/_/g, ' ')}</p>
+                {editing ? (
+                  <input
+                    value={toDisplayValue(f.value)}
+                    onChange={e => handleFieldChange(idx, e.target.value)}
+                    className="w-full text-sm font-medium bg-transparent outline-none border-b"
+                    style={{ borderColor: 'var(--border)' }}
+                  />
+                ) : (
+                  <p className="text-sm font-medium whitespace-pre-line break-words">{displayVal}</p>
+                )}
+              </div>
+            );
+          })}
+        </div>
+      ) : (
+        <div className="rounded-xl border border-dashed px-4 py-3 mb-4 text-center" style={{ borderColor: 'var(--border)' }}>
+          <p className="text-sm text-muted">Data tidak dapat diekstrak dari dokumen ini</p>
+          <button
+            onClick={handleAddField}
+            className="mt-2 flex items-center gap-1.5 mx-auto px-3 py-1.5 rounded-lg text-xs font-semibold transition hover:opacity-80"
+            style={{ background: 'var(--primary-soft)', color: 'var(--primary)' }}
+          >
+            <Plus className="h-3.5 w-3.5" /> Tambah Field Manual
+          </button>
         </div>
       )}
 
@@ -173,6 +254,9 @@ function DocumentCard({
           <>
             <button onClick={() => setEditing(true)} className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-semibold transition hover:opacity-80" style={{ background: 'var(--primary-soft)', color: 'var(--primary)' }}>
               <Pencil className="h-3.5 w-3.5" /> Edit
+            </button>
+            <button onClick={handleAddField} className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-semibold transition hover:opacity-80" style={{ background: 'var(--primary-soft)', color: 'var(--primary)' }}>
+              <Plus className="h-3.5 w-3.5" /> Tambah Field
             </button>
             <button onClick={() => onDelete(doc.id)} className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-semibold text-red-600 bg-red-50 transition hover:bg-red-100">
               <Trash2 className="h-3.5 w-3.5" /> Hapus
