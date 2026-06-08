@@ -33,10 +33,20 @@ const REQUIRED_DOCS = [
 
 type NasabahStatus = 'Verified' | 'Need Review' | 'Incomplete';
 
-function getNasabahStatus(n: BulkNasabah): NasabahStatus {
-  if (n.completenessScore >= 0.85 && !n.warnings.length) return 'Verified';
-  if (n.completenessScore >= 0.5) return 'Need Review';
-  return 'Incomplete';
+function getNasabahStatus(n: BulkNasabah, docs?: BulkDocument[]): NasabahStatus {
+  // Incomplete: dokumen belum lengkap (completeness < 100%)
+  if (n.completenessScore < 1) return 'Incomplete';
+  // Need Review: dokumen lengkap tapi AI confidence rendah
+  if (docs) {
+    const nasabahDocs = docs.filter(d => d.nasabahId === n.id);
+    const avgConfidence = nasabahDocs.length > 0
+      ? nasabahDocs.reduce((sum, d) => sum + d.confidence, 0) / nasabahDocs.length
+      : 0;
+    if (avgConfidence < 0.85 || n.warnings.length > 0) return 'Need Review';
+  } else if (n.warnings.length > 0) {
+    return 'Need Review';
+  }
+  return 'Verified';
 }
 
 const statusConfig: Record<NasabahStatus, { badgeClass: string; icon: typeof CheckCircle2 }> = {
