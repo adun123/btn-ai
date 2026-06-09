@@ -29,53 +29,25 @@ function groupByNasabah(documents) {
     fileGroups.get(key).push(doc);
   }
 
-  // Step 2: Within each file group, extract identities and split only if multiple distinct NIKs
-  const nasabahList = []; // { id, nik, fullName, address, documentIds }
+  // Step 2: Each file group = 1 nasabah. Rule-evaluation handles pemohon vs pasangan.
+  const nasabahList = [];
 
   for (const [, docs] of fileGroups) {
     const identities = extractIdentitiesFromDocs(docs);
+    // Pick the best identity as the nasabah name (prefer applicant from formulir)
+    const formulirDoc = docs.find((d) => d.documentType === 'formulir_aplikasi_kredit');
+    const formulirFields = formulirDoc?.extractedFields || {};
+    const applicantName = formulirFields.namaPemohon || formulirFields.applicantName || null;
+    const applicantNik = formulirFields.nikPemohon || formulirFields.applicantNik || null;
 
-    if (identities.length <= 1) {
-      // All docs in this file belong to one nasabah
-      const identity = identities[0] || { nik: null, name: null, address: null };
-      nasabahList.push({
-        id: randomUUID(),
-        nik: identity.nik,
-        fullName: identity.name,
-        address: identity.address,
-        documentIds: docs.map((d) => d.id),
-      });
-    } else {
-      // Multiple distinct NIKs found — split docs by NIK
-      for (const identity of identities) {
-        const matchedDocs = docs.filter((d) => {
-          const fields = d.extractedFields || {};
-          const docNik = fields.nik || fields.noKK || null;
-          const docName = fields.nama || fields.fullName || fields.kepalaKeluarga || fields.suami || fields.atasNama || null;
-          if (docNik && docNik === identity.nik) return true;
-          if (!docNik && docName && identity.name && calculateSimilarity(normalizeName(docName), normalizeName(identity.name)) >= 0.75) return true;
-          return false;
-        });
-
-        if (matchedDocs.length > 0) {
-          nasabahList.push({
-            id: randomUUID(),
-            nik: identity.nik,
-            fullName: identity.name,
-            address: identity.address,
-            documentIds: matchedDocs.map((d) => d.id),
-          });
-        }
-      }
-
-      // Docs that didn't match any identity — assign to first nasabah in this file
-      const assignedIds = new Set(nasabahList.flatMap((n) => n.documentIds));
-      const unmatched = docs.filter((d) => !assignedIds.has(d.id));
-      if (unmatched.length > 0 && nasabahList.length > 0) {
-        const lastNasabah = nasabahList[nasabahList.length - 1];
-        unmatched.forEach((d) => lastNasabah.documentIds.push(d.id));
-      }
-    }
+    const fallbackIdentity = identities[0] || { nik: null, name: null, address: null };
+    nasabahList.push({
+      id: randomUUID(),
+      nik: applicantNik || fallbackIdentity.nik,
+      fullName: applicantName || fallbackIdentity.name,
+      address: fallbackIdentity.address,
+      documentIds: docs.map((d) => d.id),
+    });
   }
 
   // Step 3: Merge nasabah across files by NIK or fuzzy name
