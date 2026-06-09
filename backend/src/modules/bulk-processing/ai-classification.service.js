@@ -51,6 +51,64 @@ Tipe dokumen yang dikenali:
 - akte_pendirian: Akte Pendirian Perusahaan
 - unknown: Tidak dikenali
 
+PENTING — Field yang WAJIB di-extract per tipe dokumen (gunakan nama field persis ini):
+
+formulir_aplikasi_kredit:
+  - namaPemohon (nama lengkap pemohon/debitur utama)
+  - nikPemohon (NIK pemohon jika ada)
+  - namaPasangan (nama suami/istri jika ada)
+  - nikPasangan (NIK pasangan jika ada)
+  - statusPernikahan (Menikah/Belum Menikah/Cerai)
+  - sumberPembayaran (Joint Income / Single Income / sendiri)
+  - jenisKredit (KPR/KPA/dll)
+  - jangkaWaktu (tenor)
+  - jumlahKredit (nominal kredit yang dimohon)
+  - penghasilanPerBulan (gaji pemohon)
+  - pekerjaanPemohon (jenis pekerjaan)
+  - statusPekerjaan (tetap/kontrak/dll)
+
+ktp:
+  - nik (16 digit)
+  - nama (nama lengkap)
+  - tempatLahir
+  - tanggalLahir
+  - jenisKelamin
+  - alamat
+  - rtRw
+  - kelurahan
+  - kecamatan
+  - kabupatenKota
+  - provinsi
+  - pekerjaan
+  - statusPerkawinan
+  - kewarganegaraan
+
+akta_nikah:
+  - suami (nama lengkap suami)
+  - istri (nama lengkap istri)
+  - tanggalNikah
+  - nomorAkta
+  - tempatNikah
+
+slip_gaji:
+  - nama (nama karyawan)
+  - namaPerusahaan
+  - jabatan
+  - periode
+  - gajiKotor
+  - gajiBersih
+  - statusKaryawan (tetap/kontrak)
+
+surat_pemesanan_rumah:
+  - namaPemesan
+  - alamatPemesan
+  - nikPemesan
+  - namaPerumahan
+  - tipeKavling
+  - hargaJual
+  - uangMuka
+  - maksimalKPR
+
 Return ONLY valid JSON array:
 [
   {
@@ -64,7 +122,8 @@ Return ONLY valid JSON array:
 
 Rules:
 - Jika 1 halaman berisi beberapa dokumen (misal 2 KTP dan 1 NPWP), return array dengan 3 elemen.
-- Field names gunakan camelCase bahasa Indonesia (misal: nik, nama, tempatLahir, tanggalLahir, alamat, agama, dll).
+- GUNAKAN nama field persis seperti di atas untuk tipe dokumen yang sudah didefinisikan.
+- Untuk dokumen lain yang tidak ada di daftar di atas, gunakan camelCase bahasa Indonesia.
 - Jangan mengarang nilai. Jika tidak terlihat, jangan masukkan field tersebut.
 - Untuk angka/nomor, pertahankan format asli dari teks.
 - Confidence antara 0 dan 1.`;
