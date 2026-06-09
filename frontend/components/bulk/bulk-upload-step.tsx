@@ -1,7 +1,7 @@
 'use client';
 
-import { useCallback, useState } from 'react';
-import { Upload, FileArchive, Loader2, History, XCircle } from 'lucide-react';
+import { useCallback, useEffect, useRef, useState } from 'react';
+import { Upload, FileArchive, Loader2, History, XCircle, ChevronDown, Trash2 } from 'lucide-react';
 import { bulkApi } from '../../lib/api-bulk';
 import type { BulkJob, BulkJobStatus } from '../../types/bulk';
 
@@ -22,6 +22,19 @@ export function BulkUploadStep({ onComplete, onViewResult }: { onComplete: (jobI
   const [job, setJob] = useState<BulkJob | null>(null);
   const [error, setError] = useState('');
   const [cancelled, setCancelled] = useState(false);
+  const [elapsed, setElapsed] = useState(0);
+  const timerRef = useRef<ReturnType<typeof setInterval> | null>(null);
+
+  useEffect(() => {
+    if (uploading) {
+      setElapsed(0);
+      timerRef.current = setInterval(() => setElapsed(s => s + 1), 1000);
+    } else if (timerRef.current) {
+      clearInterval(timerRef.current);
+      timerRef.current = null;
+    }
+    return () => { if (timerRef.current) clearInterval(timerRef.current); };
+  }, [uploading]);
 
   const handleFiles = useCallback((incoming: FileList | File[]) => {
     const arr = Array.from(incoming).filter(f =>
@@ -106,7 +119,7 @@ export function BulkUploadStep({ onComplete, onViewResult }: { onComplete: (jobI
           />
         </div>
         <p className="text-muted text-sm">
-          {job.processedPages} / {job.totalPages} halaman diproses
+          {job.processedPages} / {job.totalPages} halaman diproses • {Math.floor(elapsed / 60)}:{String(elapsed % 60).padStart(2, '0')} berlalu
         </p>
         <button
           onClick={handleCancel}
@@ -176,21 +189,63 @@ export function BulkUploadStep({ onComplete, onViewResult }: { onComplete: (jobI
         {uploading ? 'Mengupload...' : 'Proses Dokumen'}
       </button>
 
-      {/* View previous results */}
-      <button
-        onClick={async () => {
-          try {
-            const jobs = await bulkApi.getJobs();
-            const last = jobs.find(j => j.status === 'completed');
-            if (last) onViewResult(last.id);
-            else setError('Belum ada hasil pemrosesan sebelumnya.');
-          } catch { setError('Gagal memuat data.'); }
-        }}
-        className="w-full flex items-center justify-center gap-2 py-3 rounded-xl font-medium text-sm transition hover:opacity-80"
-        style={{ background: 'var(--primary-soft)', color: 'var(--primary)' }}
-      >
-        <History className="h-4 w-4" /> Lihat Hasil Sebelumnya
+      {/* Riwayat Pemrosesan */}
+      <JobHistory onViewResult={onViewResult} />
+    </div>
+  );
+}
+
+function JobHistory({ onViewResult }: { onViewResult: (jobId: string) => void }) {
+  const [jobs, setJobs] = useState<BulkJob[]>([]);
+  const [loading, setLoading] = useState(true);
+  const [open, setOpen] = useState(false);
+
+  useEffect(() => {
+    bulkApi.getJobs().then(j => { setJobs(j.filter(x => x.status === 'completed')); setLoading(false); }).catch(() => setLoading(false));
+  }, []);
+
+  if (loading || !jobs.length) return null;
+
+  const handleDelete = async (e: React.MouseEvent, jobId: string) => {
+    e.stopPropagation();
+    if (!confirm('Hapus riwayat ini?')) return;
+    try {
+      await bulkApi.deleteJob(jobId);
+      setJobs(prev => prev.filter(j => j.id !== jobId));
+    } catch { /* silent */ }
+  };
+
+  return (
+    <div className="space-y-2">
+      <button onClick={() => setOpen(!open)} className="w-full flex items-center justify-between gap-2 py-2">
+        <div className="flex items-center gap-2">
+          <History className="h-4 w-4 text-muted" />
+          <p className="text-sm font-semibold text-muted">Riwayat Pemrosesan ({jobs.length})</p>
+        </div>
+        <ChevronDown className={`h-4 w-4 text-muted transition-transform ${open ? 'rotate-180' : ''}`} />
       </button>
+      {open && (
+        <div className="space-y-2 max-h-60 overflow-y-auto">
+          {jobs.slice(0, 10).map(job => (
+            <div
+              key={job.id}
+              className="flex items-center gap-2 rounded-xl border p-3 transition hover:border-[var(--primary)] hover:bg-[var(--primary-soft)]"
+              style={{ borderColor: 'var(--border)' }}
+            >
+              <button onClick={() => onViewResult(job.id)} className="flex-1 text-left">
+                <p className="text-sm font-medium truncate">{job.uploadType === 'zip' ? '📦' : '📄'} {job.totalFiles} file • {job.totalPages} halaman</p>
+                <p className="text-xs text-muted mt-0.5">
+                  {new Date(job.createdAt).toLocaleDateString('id-ID', { day: 'numeric', month: 'short', year: 'numeric', hour: '2-digit', minute: '2-digit' })}
+                  {job.failedPages > 0 && <span className="text-amber-600 ml-2">• {job.failedPages} gagal</span>}
+                </p>
+              </button>
+              <button onClick={(e) => handleDelete(e, job.id)} className="p-1.5 rounded-lg text-red-500 hover:bg-red-50 transition">
+                <Trash2 className="h-3.5 w-3.5" />
+              </button>
+            </div>
+          ))}
+        </div>
+      )}
     </div>
   );
 }
