@@ -6,13 +6,15 @@
   "scripts": {
     "start": "node src/server.js",
     "dev": "node src/server.js",
-    "test": "echo \"No automated tests yet\""
+    "test": "node --test"
   },
   "keywords": [],
   "author": "",
   "license": "ISC",
   "type": "commonjs",
   "dependencies": {
+    "@aws-sdk/client-s3": "^3.709.0",
+    "@aws-sdk/s3-request-presigner": "^3.709.0",
     "@google/generative-ai": "^0.24.1",
     "@supabase/supabase-js": "^2.105.1",
     "cors": "^2.8.6",

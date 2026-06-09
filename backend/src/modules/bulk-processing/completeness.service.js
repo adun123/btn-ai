@@ -71,29 +71,44 @@ const KPR_CHECKLIST = {
  * @returns {{ categories: object, score: number, totalRequired: number, foundRequired: number, missing: string[], warnings: string[] }}
  */
 function checkCompleteness(documentTypes) {
-  const typeCounts = {};
-  for (const type of documentTypes) {
-    typeCounts[type] = (typeCounts[type] || 0) + 1;
-  }
+  return checkCompletenessWithRules(documentTypes, null);
+}
+
+function checkCompletenessWithRules(documentTypes, ruleContext) {
+  const typeCounts = ruleContext?.typeCounts && typeof ruleContext.typeCounts === 'object'
+    ? ruleContext.typeCounts
+    : countDocumentTypes(Array.isArray(documentTypes) ? documentTypes : []);
+  const activeChecklistKeys = new Set(
+    Array.isArray(ruleContext?.activeChecklistKeys) && ruleContext.activeChecklistKeys.length > 0
+      ? ruleContext.activeChecklistKeys
+      : Object.keys(KPR_CHECKLIST)
+  );
+  const categoryReasons = ruleContext?.categoryReasons && typeof ruleContext.categoryReasons === 'object'
+    ? ruleContext.categoryReasons
+    : {};
 
   const categories = {};
   let totalRequired = 0;
   let foundRequired = 0;
   const missing = [];
-  const warnings = [];
+  const warnings = Array.isArray(ruleContext?.warnings) ? [...ruleContext.warnings] : [];
 
   for (const [categoryKey, category] of Object.entries(KPR_CHECKLIST)) {
     const items = [];
+    const isActive = activeChecklistKeys.has(categoryKey);
+    const categoryReason = categoryReasons[categoryKey]?.reason || '';
 
     for (const doc of category.required) {
       const count = typeCounts[doc.type] || 0;
-      let status = 'missing';
+      let status = isActive ? 'missing' : 'inactive';
 
-      if (doc.required) {
+      if (isActive && doc.required) {
         totalRequired += 1;
       }
 
-      if (count > 0) {
+      if (!isActive) {
+        status = count > 0 ? 'found' : 'inactive';
+      } else if (count > 0) {
         if (doc.minCount && count < doc.minCount) {
           status = 'incomplete';
           warnings.push(`${doc.label}: baru ${count}, butuh minimal ${doc.minCount}`);
@@ -120,7 +135,7 @@ function checkCompleteness(documentTypes) {
       items.push({
         type: doc.type,
         label: doc.label,
-        status: count > 0 ? 'found' : 'not_provided',
+        status: !isActive && count === 0 ? 'inactive' : (count > 0 ? 'found' : 'not_provided'),
         count,
         required: false,
       });
@@ -128,6 +143,8 @@ function checkCompleteness(documentTypes) {
 
     categories[categoryKey] = {
       label: category.label,
+      active: isActive,
+      reason: categoryReason,
       items,
     };
   }
@@ -140,7 +157,8 @@ function checkCompleteness(documentTypes) {
     totalRequired,
     foundRequired: Math.round(foundRequired * 10) / 10,
     missing,
-    warnings,
+    warnings: Array.from(new Set(warnings)),
+    ruleSummary: buildRuleSummary(ruleContext),
   };
 }
 
@@ -150,16 +168,18 @@ function checkCompleteness(documentTypes) {
  * @param {Array<{ id: string, documentType: string }>} documents
  * @returns {Array<{ nasabahId: string, completeness: object, completenessScore: number }>}
  */
-function checkAllCompleteness(nasabahList, documents) {
+function checkAllCompleteness(nasabahList, documents, ruleResults = []) {
   const docMap = new Map(documents.map((d) => [d.id, d]));
+  const ruleMap = new Map(ruleResults.map((result) => [result.nasabahId, result]));
 
   return nasabahList.map((nasabah) => {
+    const ruleContext = ruleMap.get(nasabah.id) || null;
     const docTypes = nasabah.documentIds
       .map((id) => docMap.get(id))
       .filter(Boolean)
       .map((d) => d.documentType);
 
-    const completeness = checkCompleteness(docTypes);
+    const completeness = checkCompletenessWithRules(docTypes, ruleContext);
 
     return {
       nasabahId: nasabah.id,
@@ -169,8 +189,40 @@ function checkAllCompleteness(nasabahList, documents) {
   });
 }
 
+function countDocumentTypes(documentTypes) {
+  const typeCounts = {};
+  for (const type of documentTypes) {
+    typeCounts[type] = (typeCounts[type] || 0) + 1;
+  }
+  return typeCounts;
+}
+
+function buildRuleSummary(ruleContext) {
+  if (!ruleContext || typeof ruleContext !== 'object') {
+    return {};
+  }
+
+  return {
+    applicantName: ruleContext.applicant?.name || '',
+    applicantNik: ruleContext.applicant?.nik || '',
+    spouseName: ruleContext.spouse?.name || '',
+    spouseNik: ruleContext.spouse?.nik || '',
+    maritalStatus: ruleContext.maritalStatus || 'unknown',
+    joinIncome: ruleContext.joinIncome || 'unknown',
+    incomeType: ruleContext.incomeType || 'unknown',
+    activeChecklistKeys: Array.isArray(ruleContext.activeChecklistKeys) ? ruleContext.activeChecklistKeys : [],
+    inactiveChecklistKeys: Array.isArray(ruleContext.inactiveChecklistKeys) ? ruleContext.inactiveChecklistKeys : [],
+    categoryReasons: ruleContext.categoryReasons && typeof ruleContext.categoryReasons === 'object'
+      ? ruleContext.categoryReasons
+      : {},
+    reasons: Array.isArray(ruleContext.reasons) ? ruleContext.reasons : [],
+    facts: ruleContext.facts && typeof ruleContext.facts === 'object' ? ruleContext.facts : {},
+  };
+}
+
 module.exports = {
   checkCompleteness,
+  checkCompletenessWithRules,
   checkAllCompleteness,
   KPR_CHECKLIST,
 };

@@ -18,12 +18,13 @@ const repository = require('./bulk.repository');
 const { splitPdfToImages, imageToPages } = require('./pdf-splitter.service');
 const { ocrBatch } = require('./paddleocr.service');
 const { classifyAndGroupPages } = require('./classification.service');
-const { groupByNasabah } = require('./grouping.service');
+const { groupByNasabah, UNIDENTIFIED_FULL_NAME } = require('./grouping.service');
 const { checkAllCompleteness } = require('./completeness.service');
+const { evaluateAllNasabahRules } = require('./rule-evaluation.service');
 const { classifyAndExtractWithAI } = require('./ai-classification.service');
 
 const DEFAULT_BATCH_SIZE = 20;
-const OCR_CONCURRENCY = 5;
+const OCR_CONCURRENCY = 2;
 
 /**
  * AI-based classification: sends each page's OCR text to Gemini for classification + field extraction.
@@ -86,21 +87,17 @@ async function createAndProcessJob(input) {
     },
   });
 
-  // Process synchronously (required for serverless environments like Vercel
-  // where the function terminates after response is sent)
-  try {
-    await processJob(jobId, files, batchSize);
-  } catch (error) {
+  // Process asynchronously in background (supported since we run on a dedicated EC2 Node server, not serverless)
+  processJob(jobId, files, batchSize).catch(async (error) => {
     console.error(`[BulkOCR] Job ${jobId} failed:`, error.message);
     await repository.updateJob(jobId, {
       status: 'failed',
       error: error.message || 'Unknown processing error',
       completedAt: new Date().toISOString(),
     }).catch(() => {});
-  }
+  });
 
-  const finalJob = await repository.findJobById(jobId);
-  return { jobId: job.id, status: finalJob?.status || job.status };
+  return { jobId: job.id, status: job.status };
 }
 
 /**
@@ -165,89 +162,81 @@ async function processJob(jobId, files, batchSize) {
     batchCount,
   });
 
-  // ─── STAGE 3: OCR in parallel batches ───────────────────────────────────────
-  // Group pages by batch
-  const batches = new Array(batchCount).fill(null).map(() => []);
-  for (let i = 0; i < pageRecords.length; i += 1) {
-    batches[pageRecords[i].batchIndex].push({
-      ...pageRecords[i],
-      base64Data: allPages[i].base64Data,
-      mimeType: allPages[i].mimeType,
-    });
-  }
-
-  // Process all batches concurrently
-  const ocrResults = await Promise.all(
-    batches.map((batch) => processBatch(batch)),
-  );
-
-  // Flatten results and update pages
-  const flatResults = ocrResults.flat();
+  // ─── STAGE 3: OCR and Classification Stream ──────────────────────────────────
   let processedCount = 0;
 
-  for (const result of flatResults) {
+  async function handleProgress(result) {
+    // 1. Mark OCR done, start classifying
     await repository.updatePage(result.pageId, {
-      status: result.error ? 'failed' : 'completed',
-      ocrText: result.text || '',
+      ...(result.error ? { status: 'failed' } : {}),
+      ocrText: result.text || ' ',
       ocrConfidence: result.confidence || 0,
       ocrRaw: result.raw || null,
       error: result.error || null,
     });
-    processedCount += 1;
+    
+    // 2. Classify if no error and has sufficient text
+    if (!result.error && result.text && result.text.trim().length > 10) {
+      const record = pageRecords.find((p) => p.id === result.pageId);
+      
+      let classifiedDocs;
+      if (process.env.GEMINI_API_KEY) {
+        const detected = await classifyAndExtractWithAI(result.text);
+        classifiedDocs = detected.map((doc) => ({
+          documentType: doc.documentType,
+          confidence: doc.confidence,
+          method: 'ai_gemini',
+          sourceFilename: record?.sourceFilename || '',
+          pageIds: [result.pageId],
+          extractedFields: doc.fields || {},
+        }));
+      } else {
+        classifiedDocs = classifyAndGroupPages([{
+          pageId: result.pageId,
+          ocrText: result.text,
+          sourceFilename: record?.sourceFilename || '',
+          pageNumber: record?.pageNumber || 0,
+        }]);
+      }
 
-    // Update progress every 10 pages
-    if (processedCount % 10 === 0) {
-      await repository.updateJob(jobId, { processedPages: processedCount });
+      // Save documents to DB
+      const docRecords = classifiedDocs.map((doc) => ({
+        id: randomUUID(),
+        jobId,
+        documentType: doc.documentType,
+        confidence: doc.confidence,
+        sourceFilename: doc.sourceFilename,
+        pageIds: doc.pageIds,
+        extractedFields: doc.extractedFields || {},
+        classificationMethod: doc.method || doc.classificationMethod || 'rule_based',
+      }));
+
+      if (docRecords.length > 0) {
+        await repository.insertDocuments(docRecords);
+      }
     }
+    
+    // 3. Mark page as entirely completed
+    await repository.updatePage(result.pageId, { status: result.error ? 'failed' : 'completed' });
+    
+    // 4. Update overall job progress
+    processedCount += 1;
+    await repository.updateJob(jobId, { processedPages: processedCount });
   }
 
-  await repository.updateJob(jobId, {
-    status: 'classifying',
-    processedPages: processedCount,
-  });
-
-  // ─── STAGE 4: Classification ────────────────────────────────────────────────
-  // Build page data for classification
-  const pagesWithText = flatResults
-    .filter((r) => r.text && !r.error)
-    .map((r) => {
-      const record = pageRecords.find((p) => p.id === r.pageId);
-      return {
-        pageId: r.pageId,
-        ocrText: r.text,
-        sourceFilename: record?.sourceFilename || '',
-        pageNumber: record?.pageNumber || 0,
-      };
-    })
-    .sort((a, b) => {
-      if (a.sourceFilename !== b.sourceFilename) return a.sourceFilename.localeCompare(b.sourceFilename);
-      return a.pageNumber - b.pageNumber;
-    });
-
-  // Use AI (Gemini) for classification + extraction if available, fallback to rule-based
-  let classifiedDocs;
-  if (process.env.GEMINI_API_KEY) {
-    classifiedDocs = await classifyWithAI(pagesWithText);
-  } else {
-    classifiedDocs = classifyAndGroupPages(pagesWithText);
-  }
-
-  // Save documents to DB
-  const docRecords = classifiedDocs.map((doc) => ({
-    id: randomUUID(),
-    jobId,
-    documentType: doc.documentType,
-    confidence: doc.confidence,
-    sourceFilename: doc.sourceFilename,
-    pageIds: doc.pageIds,
-    extractedFields: doc.extractedFields || {},
-    classificationMethod: doc.method,
+  // Combine all pages into a single flat array so the worker pool can process them seamlessly
+  const allImages = pageRecords.map((page, i) => ({
+    ...page,
+    base64Data: allPages[i].base64Data,
+    mimeType: allPages[i].mimeType,
   }));
 
-  let savedDocs = [];
-  if (docRecords.length > 0) {
-    savedDocs = await repository.insertDocuments(docRecords);
-  }
+  // Process ALL pages seamlessly in a single global worker pool.
+  // If one page gets stuck, the other worker will pick up ALL remaining pages.
+  const flatResults = await processBatch(allImages, handleProgress);
+  
+  // All pages are processed and classified. Fetch all documents for Grouping.
+  const savedDocs = await repository.getDocumentsByJob(jobId);
 
   // ─── STAGE 5: Grouping ─────────────────────────────────────────────────────
   await repository.updateJob(jobId, { status: 'grouping' });
@@ -255,7 +244,8 @@ async function processJob(jobId, files, batchSize) {
   const nasabahGroups = groupByNasabah(savedDocs);
 
   // ─── STAGE 6: Completeness Check ───────────────────────────────────────────
-  const completenessResults = checkAllCompleteness(nasabahGroups, savedDocs);
+  const ruleResults = evaluateAllNasabahRules(nasabahGroups, savedDocs);
+  const completenessResults = checkAllCompleteness(nasabahGroups, savedDocs, ruleResults);
 
   // Save nasabah records
   const nasabahRecords = nasabahGroups.map((n) => {
@@ -290,8 +280,8 @@ async function processJob(jobId, files, batchSize) {
     processedPages: processedCount,
     failedPages: flatResults.filter((r) => r.error).length,
     totalDocuments: savedDocs.length,
-    totalNasabah: nasabahGroups.filter((n) => n.fullName !== 'Tidak Teridentifikasi').length,
-    unidentifiedDocuments: nasabahGroups.find((n) => n.fullName === 'Tidak Teridentifikasi')?.documentIds.length || 0,
+    totalNasabah: nasabahGroups.filter((n) => n.fullName !== UNIDENTIFIED_FULL_NAME).length,
+    unidentifiedDocuments: nasabahGroups.find((n) => n.fullName === UNIDENTIFIED_FULL_NAME)?.documentIds.length || 0,
     nasabah: nasabahGroups.map((n) => {
       const completenessData = completenessResults.find((c) => c.nasabahId === n.id);
       return {
@@ -302,6 +292,7 @@ async function processJob(jobId, files, batchSize) {
         completenessScore: completenessData?.completenessScore || 0,
         missing: completenessData?.completeness?.missing || [],
         warnings: completenessData?.completeness?.warnings || [],
+        ruleSummary: completenessData?.completeness?.ruleSummary || undefined,
       };
     }),
   };
@@ -319,7 +310,7 @@ async function processJob(jobId, files, batchSize) {
 /**
  * Process a single batch of pages through OCR.
  */
-async function processBatch(batchPages) {
+async function processBatch(batchPages, onProgress) {
   const images = batchPages.map((page) => ({
     base64Data: page.base64Data,
     mimeType: page.mimeType,
@@ -327,7 +318,7 @@ async function processBatch(batchPages) {
     pageId: page.id,
   }));
 
-  return ocrBatch(images, { concurrency: OCR_CONCURRENCY });
+  return ocrBatch(images, { concurrency: OCR_CONCURRENCY, onProgress });
 }
 
 module.exports = {

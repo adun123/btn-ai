@@ -8,27 +8,45 @@ const router = express.Router();
  * /cases/{caseId}/extraction/start:
  *   post:
  *     tags: [Extraction]
- *     summary: Start extraction flow based on channel
- *     description: Branch uses BTN-style block form OCR orchestration. Bale uses lightweight document OCR orchestration and rejects OCR results when the detected visible document type does not match the uploaded Bale `documentType`.
+ *     summary: Start extraction flow based on channel (async)
+ *     description: Returns a jobId for async processing.
  *     parameters:
- *       - in: path
- *         name: caseId
+ *       - name: caseId
+ *         in: path
  *         required: true
  *         schema:
  *           type: string
  *     responses:
  *       200:
- *         description: Extraction result generated
- *       400:
- *         description: Bale extraction rejected because the detected visible document type does not match the uploaded `documentType`
- *         content:
- *           application/json:
- *             schema:
- *               $ref: '#/components/schemas/DocumentTypeMismatchErrorResponse'
+ *         description: Extraction job started
  */
 router.post('/:caseId/extraction/start', async (req, res, next) => {
   try {
     res.json({ success: true, data: await service.startExtraction(req.params.caseId, req.body || {}) });
+  } catch (error) {
+    next(error);
+  }
+});
+
+/**
+ * @openapi
+ * /jobs/{jobId}/status:
+ *   get:
+ *     tags: [Extraction]
+ *     summary: Get processing job status
+ *     parameters:
+ *       - name: jobId
+ *         in: path
+ *         required: true
+ *         schema:
+ *           type: string
+ *     responses:
+ *       200:
+ *         description: Job status
+ */
+router.get('/jobs/:jobId/status', async (req, res, next) => {
+  try {
+    res.json({ success: true, data: await service.getJobStatus(req.params.jobId) });
   } catch (error) {
     next(error);
   }
@@ -41,8 +59,8 @@ router.post('/:caseId/extraction/start', async (req, res, next) => {
  *     tags: [Extraction]
  *     summary: Get extraction result for a case
  *     parameters:
- *       - in: path
- *         name: caseId
+ *       - name: caseId
+ *         in: path
  *         required: true
  *         schema:
  *           type: string

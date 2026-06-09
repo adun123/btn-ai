@@ -190,6 +190,33 @@ router.get('/jobs/:jobId/details', async (req, res, next) => {
 
 /**
  * @openapi
+ * /bulk/jobs/{jobId}/pages:
+ *   get:
+ *     tags: [Bulk OCR Processing]
+ *     summary: Get lightweight list of all pages and their OCR status
+ *     parameters:
+ *       - in: path
+ *         name: jobId
+ *         required: true
+ *         schema:
+ *           type: string
+ *     responses:
+ *       200:
+ *         description: Array of pages with status
+ *       404:
+ *         description: Job not found
+ */
+router.get('/jobs/:jobId/pages', async (req, res, next) => {
+  try {
+    const pages = await service.getJobPages(req.params.jobId);
+    res.json({ success: true, data: pages });
+  } catch (error) {
+    next(error);
+  }
+});
+
+/**
+ * @openapi
  * /bulk/jobs/{jobId}/pages/{pageId}:
  *   get:
  *     tags: [Bulk OCR Processing]

@@ -1,16 +1,30 @@
 /**
  * Bulk Storage Service
  *
- * Handles presigned URL generation and file retrieval from Supabase Storage
+ * Handles presigned URL generation and file retrieval from AWS S3
  * to bypass Vercel's 4.5MB request body limit.
+ *
+ * Uses the same S3 bucket as the evidence upload flow.
  */
 
 const { randomUUID } = require('node:crypto');
-const { getSupabase } = require('../../data/supabase');
+const { S3Client, PutObjectCommand, GetObjectCommand, DeleteObjectsCommand, ListObjectsV2Command } = require('@aws-sdk/client-s3');
+const { getSignedUrl } = require('@aws-sdk/s3-request-presigner');
 const { createHttpError } = require('../../utils/httpError');
 
-const BUCKET = 'bulk-uploads';
+const BUCKET = process.env.S3_BUCKET;
 const SIGNED_URL_EXPIRY = 600; // 10 minutes
+const BULK_PREFIX = 'bulk-uploads';
+
+const s3 = new S3Client({
+  region: process.env.AWS_REGION || 'ap-southeast-2',
+  credentials: {
+    accessKeyId: process.env.AWS_ACCESS_KEY_ID,
+    secretAccessKey: process.env.AWS_SECRET_ACCESS_KEY,
+  },
+  requestChecksumCalculation: 'WHEN_REQUIRED',
+  responseChecksumValidation: 'WHEN_REQUIRED',
+});
 
 /**
  * Generate presigned upload URLs for a list of files.
@@ -22,27 +36,29 @@ async function generatePresignedUrls(files) {
     throw createHttpError(400, 'At least one file entry is required');
   }
 
-  const supabase = getSupabase();
   const uploadId = randomUUID();
   const urls = [];
 
   for (const file of files) {
     const ext = file.filename.split('.').pop()?.toLowerCase() || '';
-    const storagePath = `${uploadId}/${randomUUID()}.${ext}`;
+    const s3Key = `${BULK_PREFIX}/${uploadId}/${randomUUID()}.${ext}`;
 
-    const { data, error } = await supabase.storage
-      .from(BUCKET)
-      .createSignedUploadUrl(storagePath);
+    const command = new PutObjectCommand({
+      Bucket: BUCKET,
+      Key: s3Key,
+      ContentType: file.contentType,
+    });
 
-    if (error) {
-      throw createHttpError(500, `Failed to create signed URL for ${file.filename}`, { detail: error.message });
-    }
+    const signedUrl = await getSignedUrl(s3, command, {
+      expiresIn: SIGNED_URL_EXPIRY,
+      unhoistableHeaders: new Set(['content-type']),
+    });
 
     urls.push({
       filename: file.filename,
-      path: storagePath,
-      signedUrl: data.signedUrl,
-      token: data.token,
+      path: s3Key,
+      signedUrl,
+      token: '', // S3 doesn't use tokens, kept for API compatibility
     });
   }
 
@@ -50,27 +66,36 @@ async function generatePresignedUrls(files) {
 }
 
 /**
- * Download files from Supabase Storage for processing.
+ * Download files from S3 for processing.
  * @param {string} uploadId
  * @param {{ filename: string, path: string, contentType: string }[]} files
  * @returns {Array<{ buffer: Buffer, originalname: string, mimetype: string, size: number }>}
  */
 async function downloadFromStorage(uploadId, files) {
-  const supabase = getSupabase();
   const downloaded = [];
 
   for (const file of files) {
-    console.log(`[BulkStorage] downloading ${file.path} from bucket ${BUCKET}`);
-    const { data, error } = await supabase.storage
-      .from(BUCKET)
-      .download(file.path);
+    console.log(`[BulkStorage] downloading ${file.path} from S3 bucket ${BUCKET}`);
 
-    if (error) {
-      console.error(`[BulkStorage] download failed for ${file.path}: ${error.message} (status: ${error.status ?? 'unknown'})`);
-      throw createHttpError(500, `Failed to download ${file.filename} from storage: ${error.message}`);
+    const command = new GetObjectCommand({
+      Bucket: BUCKET,
+      Key: file.path,
+    });
+
+    let response;
+    try {
+      response = await s3.send(command);
+    } catch (err) {
+      console.error(`[BulkStorage] download failed for ${file.path}: ${err.message}`);
+      throw createHttpError(500, `Failed to download ${file.filename} from storage: ${err.message}`);
     }
 
-    const buffer = Buffer.from(await data.arrayBuffer());
+    const chunks = [];
+    for await (const chunk of response.Body) {
+      chunks.push(chunk);
+    }
+    const buffer = Buffer.concat(chunks);
+
     console.log(`[BulkStorage] downloaded ${file.filename}: ${buffer.length} bytes`);
     downloaded.push({
       buffer,
@@ -88,14 +113,31 @@ async function downloadFromStorage(uploadId, files) {
 }
 
 /**
- * Cleanup uploaded files from storage after processing.
+ * Cleanup uploaded files from S3 after processing.
  */
 async function cleanupUpload(uploadId) {
-  const supabase = getSupabase();
-  const { data: list } = await supabase.storage.from(BUCKET).list(uploadId);
-  if (list && list.length > 0) {
-    const paths = list.map(f => `${uploadId}/${f.name}`);
-    await supabase.storage.from(BUCKET).remove(paths);
+  try {
+    const prefix = `${BULK_PREFIX}/${uploadId}/`;
+    const listCommand = new ListObjectsV2Command({
+      Bucket: BUCKET,
+      Prefix: prefix,
+    });
+
+    const listResult = await s3.send(listCommand);
+    const objects = listResult.Contents;
+
+    if (objects && objects.length > 0) {
+      const deleteCommand = new DeleteObjectsCommand({
+        Bucket: BUCKET,
+        Delete: {
+          Objects: objects.map(obj => ({ Key: obj.Key })),
+        },
+      });
+      await s3.send(deleteCommand);
+      console.log(`[BulkStorage] cleaned up ${objects.length} files for upload ${uploadId}`);
+    }
+  } catch (err) {
+    console.warn(`[BulkStorage] cleanup failed for ${uploadId}: ${err.message}`);
   }
 }
 

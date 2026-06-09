@@ -8,6 +8,7 @@
 const { createHttpError } = require('../../utils/httpError');
 const repository = require('./bulk.repository');
 const { createAndProcessJob } = require('./bulk-orchestrator.service');
+const { UNIDENTIFIED_FULL_NAME } = require('./grouping.service');
 const { extractZipBuffer } = require('./zip-extractor');
 
 const ALLOWED_MIME_TYPES = new Set([
@@ -27,8 +28,6 @@ const ZIP_MIME_TYPES = new Set([
 
 const MAX_FILE_SIZE = 100 * 1024 * 1024; // 100MB per file
 const MAX_TOTAL_SIZE = 500 * 1024 * 1024; // 500MB total
-const UNIDENTIFIED_FULL_NAME = 'Unidentified';
-
 /**
  * Handle bulk upload (ZIP or multiple files).
  * @param {Array<{ buffer: Buffer, originalname: string, mimetype: string, size: number }>} files
@@ -208,6 +207,9 @@ function normalizeNasabahRecord(record) {
     : {};
   const fullName = record.fullName || '';
   const nik = record.nik || '';
+  const ruleSummary = completeness.ruleSummary && typeof completeness.ruleSummary === 'object'
+    ? completeness.ruleSummary
+    : (record.ruleSummary && typeof record.ruleSummary === 'object' ? record.ruleSummary : undefined);
 
   return {
     id: record.id,
@@ -221,6 +223,7 @@ function normalizeNasabahRecord(record) {
     warnings: Array.isArray(record.warnings)
       ? record.warnings
       : (Array.isArray(completeness.warnings) ? completeness.warnings : []),
+    ruleSummary,
   };
 }
 
@@ -261,6 +264,33 @@ async function getJobStatus(jobId) {
 }
 
 /**
+ * Get lightweight list of pages for a job (progress tracking).
+ */
+async function getJobPages(jobId) {
+  const job = await repository.findJobById(jobId);
+  if (!job) {
+    throw createHttpError(404, 'Bulk processing job not found');
+  }
+
+  const pages = await repository.getPagesByJob(jobId);
+  return pages.map((p) => {
+    let virtualStatus = p.status;
+    if (p.status !== 'completed' && p.status !== 'failed' && p.ocrText && p.ocrText.trim() !== '') {
+      virtualStatus = 'classifying';
+    }
+    return {
+      id: p.id,
+      sourceFilename: p.sourceFilename,
+      pageNumber: p.pageNumber,
+      batchIndex: p.batchIndex,
+      status: virtualStatus,
+      ocrConfidence: p.ocrConfidence,
+      error: p.error || null,
+    };
+  });
+}
+
+/**
  * Get full job details including documents and nasabah.
  */
 async function getJobDetails(jobId) {
@@ -292,6 +322,7 @@ async function getJobDetails(jobId) {
       batchIndex: p.batchIndex,
       status: p.status,
       ocrConfidence: p.ocrConfidence,
+      error: p.error || null,
       // Exclude full OCR text from listing (can be fetched per-page)
     })),
   };
@@ -335,6 +366,7 @@ async function deleteNasabah(nasabahId) {
 module.exports = {
   handleBulkUpload,
   getJobStatus,
+  getJobPages,
   getJobDetails,
   getPageOcrData,
   listJobs,

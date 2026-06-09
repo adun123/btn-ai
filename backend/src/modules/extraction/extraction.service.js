@@ -4,6 +4,7 @@ const caseService = require('../assessment-core/case.service');
 const evidenceRepository = require('../evidence-documents/evidence.repository');
 const { extractDocument } = require('../provider-gateway/gemini-ocr.service');
 const { normalizeDocumentType } = require('../evidence-documents/evidence.service');
+const processingService = require('../processing/processing.service');
 
 function buildBranchExtraction() {
   // Branch OCR is still a placeholder that preserves the future BTN block-form response shape.
@@ -121,6 +122,53 @@ async function buildBaleExtraction(record) {
   };
 }
 
+async function processExtractionAsync(caseId, jobId) {
+  try {
+    // Update status to processing
+    await processingService.updateJobStatus(jobId, 'processing');
+
+    // Get the case
+    const record = await caseService.getCase(caseId);
+    if (!record.evidence.length) {
+      throw createHttpError(400, 'Evidence must be uploaded before extraction starts');
+    }
+
+    // Run extraction
+    const extraction = record.channel === 'branch'
+      ? buildBranchExtraction()
+      : await buildBaleExtraction(record);
+
+    // Update case with extraction result
+    record.extraction = extraction;
+    record.status = 'extraction_completed';
+    record.auditTrail.push({
+      action: 'extraction_completed',
+      timestamp: nowIso(),
+      payload: {
+        channel: record.channel,
+        pipeline: extraction.pipeline,
+      },
+    });
+    record.updatedAt = nowIso();
+
+    await caseService.saveCaseRecord(record);
+
+    // Update job status to completed with result
+    await processingService.updateJobStatus(jobId, 'completed', {
+      extraction,
+      case: record,
+    });
+  } catch (error) {
+    // Update job status to failed
+    await processingService.updateJobStatus(
+      jobId,
+      'failed',
+      null,
+      error.message || 'Unknown error',
+    );
+  }
+}
+
 async function startExtraction(caseId, body = {}) {
   const clientCase = body.clientCase;
   const record = await caseService.getCase(caseId, clientCase);
@@ -128,25 +176,29 @@ async function startExtraction(caseId, body = {}) {
     throw createHttpError(400, 'Evidence must be uploaded before extraction starts');
   }
 
-  const extraction = record.channel === 'branch'
-    ? buildBranchExtraction()
-    : await buildBaleExtraction(record);
+  // Create processing job
+  const job = await processingService.createProcessingJob(caseId);
 
-  record.extraction = extraction;
-  record.status = 'extraction_completed';
-  record.auditTrail.push({
-    action: 'extraction_started',
-    timestamp: nowIso(),
-    payload: {
-      channel: record.channel,
-      pipeline: extraction.pipeline,
-    },
-  });
-  record.updatedAt = nowIso();
+  // Process extraction asynchronously (don't await)
+  // Use setImmediate to ensure this runs in the next event loop tick
+  setImmediate(() => processExtractionAsync(caseId, job.id).catch((err) => {
+    console.error('Extraction async error:', err);
+  }));
 
-  await caseService.saveCaseRecord(record);
+  // Return job ID immediately
+  return {
+    jobId: job.id,
+    status: 'pending',
+    message: 'Extraction job started. Poll /jobs/:jobId/status for updates.',
+  };
+}
 
-  return extraction;
+async function getJobStatus(jobId) {
+  const job = await processingService.getJobStatus(jobId);
+  if (!job) {
+    throw createHttpError(404, 'Job not found');
+  }
+  return job;
 }
 
 async function getExtraction(caseId) {
@@ -160,4 +212,5 @@ async function getExtraction(caseId) {
 module.exports = {
   startExtraction,
   getExtraction,
+  getJobStatus,
 };

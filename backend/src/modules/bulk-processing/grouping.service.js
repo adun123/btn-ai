@@ -12,6 +12,8 @@
 
 const { randomUUID } = require('node:crypto');
 
+const UNIDENTIFIED_FULL_NAME = 'Tidak Teridentifikasi';
+
 /**
  * Group documents by nasabah.
  * @param {Array<{ id: string, documentType: string, sourceFilename: string, extractedFields: object }>} documents
@@ -89,7 +91,7 @@ function groupByNasabah(documents) {
     merged.push({
       id: randomUUID(),
       nik: null,
-      fullName: 'Tidak Teridentifikasi',
+      fullName: UNIDENTIFIED_FULL_NAME,
       address: null,
       documentIds: unassigned,
     });
@@ -109,13 +111,7 @@ function extractIdentitiesFromDocs(docs) {
   for (const doc of docs) {
     const fields = doc.extractedFields || {};
     const nik = fields.nik || fields.noKK || null;
-    
-    // Prioritize applicant name over spouse name
-    // nama, fullName, kepalaKeluarga = applicant/pemohon
-    // suami, istri, pasangan = spouse (should NOT be primary name)
-    const name = fields.nama || fields.fullName || fields.kepalaKeluarga || fields.atasNama || fields.namaUsaha || 
-                 fields.suami || fields.istri || fields.pasangan || null;
-    
+    const name = fields.nama || fields.fullName || fields.kepalaKeluarga || fields.suami || fields.atasNama || fields.namaUsaha || null;
     const address = fields.alamat || fields.address || fields.lokasi || fields.alamatUsaha || null;
 
     if (nik) {
@@ -123,19 +119,12 @@ function extractIdentitiesFromDocs(docs) {
         nikMap.set(nik, { nik, name, address });
       } else {
         const existing = nikMap.get(nik);
-        // Only update name if current name is null or is a spouse name
-        if (name && (!existing.name || isSpouseName(existing.name))) {
-          existing.name = name;
-        }
+        if (name && !existing.name) existing.name = name;
         if (address && !existing.address) existing.address = address;
       }
     }
 
-    // For fallback, prefer applicant name
     if (name && !fallbackName) fallbackName = name;
-    if (name && fallbackName && isSpouseName(fallbackName) && !isSpouseName(name)) {
-      fallbackName = name;
-    }
     if (address && !fallbackAddress) fallbackAddress = address;
   }
 
@@ -145,16 +134,6 @@ function extractIdentitiesFromDocs(docs) {
   }
 
   return Array.from(nikMap.values());
-}
-
-/**
- * Check if a name is likely a spouse name (contains keywords like suami, istri, etc.)
- */
-function isSpouseName(name) {
-  if (!name) return false;
-  const lowerName = name.toLowerCase();
-  // Check if name contains spouse-related keywords
-  return lowerName.includes('suami') || lowerName.includes('istri') || lowerName.includes('pasangan');
 }
 
 /**
@@ -225,4 +204,4 @@ function levenshtein(a, b) {
   return matrix[b.length][a.length];
 }
 
-module.exports = { groupByNasabah, normalizeName, calculateSimilarity };
+module.exports = { groupByNasabah, normalizeName, calculateSimilarity, UNIDENTIFIED_FULL_NAME };

@@ -5,14 +5,101 @@ const router = express.Router();
 
 /**
  * @openapi
+ * /cases/{caseId}/evidence/presigned-url:
+ *   post:
+ *     tags: [Evidence]
+ *     summary: Get presigned URL for direct S3 upload
+ *     description: Returns a presigned URL that the client can use to upload directly to S3.
+ *     parameters:
+ *       - name: caseId
+ *         in: path
+ *         required: true
+ *         schema:
+ *           type: string
+ *     requestBody:
+ *       required: true
+ *       content:
+ *         application/json:
+ *           schema:
+ *             type: object
+ *             required:
+ *               - filename
+ *               - contentType
+ *               - documentType
+ *             properties:
+ *               filename:
+ *                 type: string
+ *               contentType:
+ *                 type: string
+ *               documentType:
+ *                 type: string
+ *               size:
+ *                 type: number
+ *               notes:
+ *                 type: string
+ *     responses:
+ *       200:
+ *         description: Presigned URL generated
+ */
+router.post('/:caseId/evidence/presigned-url', async (req, res, next) => {
+  try {
+    const result = await service.getPresignedUrl(req.params.caseId, req.body);
+    res.json({ success: true, data: result });
+  } catch (error) {
+    next(error);
+  }
+});
+
+/**
+ * @openapi
+ * /cases/{caseId}/evidence/confirm-upload:
+ *   post:
+ *     tags: [Evidence]
+ *     summary: Confirm S3 upload and create evidence record
+ *     description: Called after successful S3 upload to create the evidence record in the database.
+ *     parameters:
+ *       - name: caseId
+ *         in: path
+ *         required: true
+ *         schema:
+ *           type: string
+ *     requestBody:
+ *       required: true
+ *       content:
+ *         application/json:
+ *           schema:
+ *             type: object
+ *             required:
+ *               - evidenceId
+ *               - key
+ *             properties:
+ *               evidenceId:
+ *                 type: string
+ *               key:
+ *                 type: string
+ *     responses:
+ *       200:
+ *         description: Evidence record created
+ */
+router.post('/:caseId/evidence/confirm-upload', async (req, res, next) => {
+  try {
+    const result = await service.confirmS3Upload(req.params.caseId, req.body);
+    res.json({ success: true, data: result });
+  } catch (error) {
+    next(error);
+  }
+});
+
+/**
+ * @openapi
  * /cases/{caseId}/evidence:
  *   post:
  *     tags: [Evidence]
- *     summary: Upload evidence files for a case
- *     description: Bale only accepts documentType values `ktp`, `kk`, `slip_gaji`, `npwp`, or `rekening_koran`. Branch accepts `application_form`, `supporting_document`, `salary_slip`, or `other`.
+ *     summary: Upload evidence files for a case (legacy)
+ *     description: Legacy endpoint that stores files as base64. For production use presigned-url endpoint instead.
  *     parameters:
- *       - in: path
- *         name: caseId
+ *       - name: caseId
+ *         in: path
  *         required: true
  *         schema:
  *           type: string
@@ -22,11 +109,11 @@ const router = express.Router();
  *         multipart/form-data:
  *           schema:
  *             type: object
- *             required: [files]
+ *             required:
+ *               - files
  *             properties:
  *               documentType:
  *                 type: string
- *                 example: ktp
  *               notes:
  *                 type: string
  *               files:
@@ -37,8 +124,6 @@ const router = express.Router();
  *     responses:
  *       200:
  *         description: Evidence uploaded
- *       400:
- *         description: Invalid documentType for the case channel
  */
 router.post('/:caseId/evidence', service.upload.array('files', 10), async (req, res, next) => {
   try {
@@ -55,8 +140,8 @@ router.post('/:caseId/evidence', service.upload.array('files', 10), async (req, 
  *     tags: [Evidence]
  *     summary: List evidence for a case
  *     parameters:
- *       - in: path
- *         name: caseId
+ *       - name: caseId
+ *         in: path
  *         required: true
  *         schema:
  *           type: string

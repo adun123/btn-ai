@@ -275,6 +275,7 @@ function extractIdentifiers(ocrText, documentType) {
     surat_keterangan_kerja: extractSuratKeteranganKerja,
     nib: extractNib,
     spt_pajak: extractSpt,
+    formulir_aplikasi_kredit: extractFormulirAplikasiKredit,
   };
 
   const extractor = extractors[documentType];
@@ -399,6 +400,23 @@ function extractSpt(text) {
   r.nama = match(text, /(?:Nama|NAMA)\s*[:\-]?\s*([^\n]+)/i);
   r.npwp = match(text, /(\d{2}\.\d{3}\.\d{3}\.\d[\-\.]\d{3}\.\d{3})/);
   r.penghasilanNetto = match(text, /(?:Penghasilan\s*Netto|Netto)\s*[:\-]?\s*([^\n]+)/i);
+  return clean(r);
+}
+
+function extractFormulirAplikasiKredit(text) {
+  const r = {};
+  r.applicantName = match(text, /(?:Nama\s*(?:Lengkap\s*)?Pemohon|Nama\s*Debitur|Calon\s*Debitur|Pemohon)\s*[:\-]?\s*([^\n]+)/i);
+  r.applicantNik = match(text, /(?:NIK\s*Pemohon|No\.?\s*KTP\s*Pemohon|Nomor\s*KTP\s*Pemohon)\s*[:\-]?\s*(\d{16})/i);
+  r.spouseName = match(text, /(?:Nama\s*(?:Lengkap\s*)?Pasangan|Nama\s*Suami\/?Istri|Nama\s*Suami|Nama\s*Istri|Pasangan)\s*[:\-]?\s*([^\n]+)/i);
+  r.spouseNik = match(text, /(?:NIK\s*Pasangan|No\.?\s*KTP\s*Pasangan|Nomor\s*KTP\s*Pasangan)\s*[:\-]?\s*(\d{16})/i);
+  r.maritalStatus = match(text, /(?:Status\s*Perkawinan|Status\s*Pernikahan|Marital\s*Status)\s*[:\-]?\s*([^\n]+)/i);
+  r.joinIncome = match(text, /(?:Join\s*Income|Joint\s*Income|Penghasilan\s*Gabungan|Penghasilan\s*Bersama)\s*[:\-]?\s*([^\n]+)/i);
+  r.incomeType = match(text, /(?:Jenis\s*Penghasilan|Status\s*Penghasilan|Income\s*Type)\s*[:\-]?\s*([^\n]+)/i);
+  r.applicantOccupation = match(text, /(?:Pekerjaan\s*Pemohon|Pekerjaan)\s*[:\-]?\s*([^\n]+)/i);
+  r.spouseOccupation = match(text, /(?:Pekerjaan\s*Pasangan|Pekerjaan\s*Suami\/?Istri)\s*[:\-]?\s*([^\n]+)/i);
+  r.nik = r.applicantNik;
+  r.nama = r.applicantName;
+  r.alamat = match(text, /(?:Alamat\s*(?:Rumah|Domisili)?|ALAMAT)\s*[:\-]?\s*([^\n]{5,100})/i);
   return clean(r);
 }
 

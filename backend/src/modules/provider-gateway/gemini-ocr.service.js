@@ -153,6 +153,7 @@ async function extractDocument({ documentType, mimeType, base64Data }) {
       break;
     } catch (error) {
       const message = error instanceof Error ? error.message : String(error);
+      console.error(`Gemini OCR attempt ${attempt} failed:`, message);
       const retryable = message.includes('503') || message.includes('429') || message.includes('high demand');
 
       // Retry only transient provider pressure; malformed requests should fail without hiding the cause.
