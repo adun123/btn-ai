@@ -4,7 +4,7 @@ import { useEffect, useMemo, useState, useCallback } from 'react';
 import {
   Search, Eye, FileText, CheckCircle2, AlertTriangle, XCircle,
   X, UserRound, BadgeCheck, Filter, Download, RotateCcw,
-  Pencil, Trash2, Plus, Save, Upload, Loader2,
+  Pencil, Trash2, Plus, Save, Upload, Loader2, ChevronDown,
 } from 'lucide-react';
 import { bulkApi } from '../../lib/api-bulk';
 import type { BulkJobDetails, BulkNasabah, BulkDocument, BulkDocumentField } from '../../types/bulk';
@@ -29,28 +29,30 @@ const DOC_LABELS: Record<string, string> = {
 const REQUIRED_DOCS = [
   'formulir_aplikasi_kredit', 'pas_foto', 'ktp', 'kk', 'npwp',
   'surat_pemesanan_rumah', 'rekening_koran', 'slip_gaji',
+  'surat_keterangan_kerja', 'akta_nikah',
+  'pas_foto_pasangan', 'ktp_pasangan', 'npwp_pasangan',
 ];
 
-type NasabahStatus = 'Verified' | 'Need Review' | 'Incomplete';
+type NasabahStatus = 'Complete' | 'Need Review' | 'Incomplete';
 
 function getNasabahStatus(n: BulkNasabah, docs?: BulkDocument[]): NasabahStatus {
   // Incomplete: dokumen belum lengkap (completeness < 100%)
   if (n.completenessScore < 1) return 'Incomplete';
-  // Need Review: dokumen lengkap tapi AI confidence rendah
+  // Need Review: dokumen lengkap tapi AI confidence rendah (< 90%)
   if (docs) {
     const nasabahDocs = docs.filter(d => d.nasabahId === n.id);
     const avgConfidence = nasabahDocs.length > 0
       ? nasabahDocs.reduce((sum, d) => sum + d.confidence, 0) / nasabahDocs.length
       : 0;
-    if (avgConfidence < 0.85 || n.warnings.length > 0) return 'Need Review';
+    if (avgConfidence < 0.90 || n.warnings.length > 0) return 'Need Review';
   } else if (n.warnings.length > 0) {
     return 'Need Review';
   }
-  return 'Verified';
+  return 'Complete';
 }
 
 const statusConfig: Record<NasabahStatus, { badgeClass: string; icon: typeof CheckCircle2 }> = {
-  Verified: { badgeClass: 'bg-emerald-50 text-emerald-700 ring-emerald-200', icon: CheckCircle2 },
+  Complete: { badgeClass: 'bg-emerald-50 text-emerald-700 ring-emerald-200', icon: CheckCircle2 },
   'Need Review': { badgeClass: 'bg-amber-50 text-amber-700 ring-amber-200', icon: AlertTriangle },
   Incomplete: { badgeClass: 'bg-rose-50 text-rose-700 ring-rose-200', icon: XCircle },
 };
@@ -172,6 +174,7 @@ function DocumentCard({
   onDelete: (docId: string) => void;
 }) {
   const [editing, setEditing] = useState(false);
+  const [expanded, setExpanded] = useState(true);
   const [fields, setFields] = useState<BulkDocumentField[]>(doc.fields || []);
 
   const handleFieldChange = (idx: number, value: string) => {
@@ -188,15 +191,17 @@ function DocumentCard({
     setEditing(true);
   };
 
-  // Filter out [Image N] placeholders and [object Object] from display fields
+  // Filter out [Image N] placeholders, [object Object], and transaksi fields
+  const HIDDEN_KEYS = new Set(['transaksi', 'daftarTransaksi', 'transactions', 'listTransaksi']);
   const displayFields = fields.filter(f => {
+    if (HIDDEN_KEYS.has(f.key)) return false;
     const display = toDisplayValue(f.value);
     return display && !isImagePlaceholder(display);
   });
 
   return (
     <div className="glass-card p-5">
-      <div className="flex items-center justify-between gap-3 mb-4">
+      <div className="flex items-center justify-between gap-3 mb-4 cursor-pointer" onClick={() => setExpanded(!expanded)}>
         <div className="flex items-center gap-3">
           <div className="rounded-xl p-2" style={{ background: 'var(--primary-soft)' }}>
             <FileText className="h-5 w-5" style={{ color: 'var(--primary)' }} />
@@ -211,8 +216,11 @@ function DocumentCard({
           <span className="rounded-full px-2.5 py-1 text-xs font-semibold" style={{ background: 'var(--primary-soft)' }}>
             {Math.round(doc.confidence * 100)}%
           </span>
+          <ChevronDown className={`h-4 w-4 text-muted transition-transform ${expanded ? 'rotate-180' : ''}`} />
         </div>
       </div>
+
+      {expanded && (<>
 
       {/* Fields */}
       {displayFields.length > 0 ? (
@@ -221,7 +229,7 @@ function DocumentCard({
             const displayVal = toDisplayValue(f.value);
             return (
               <div key={f.key} className="rounded-xl border px-4 py-3" style={{ borderColor: 'var(--border)', background: editing ? 'var(--card)' : 'var(--primary-soft)' }}>
-                <p className="text-[11px] font-semibold uppercase tracking-wide text-muted mb-1.5">{f.key.replace(/_/g, ' ')}</p>
+                <p className="text-[11px] font-semibold uppercase tracking-wide text-muted mb-1.5">{f.key.replace(/([a-z])([A-Z])/g, '$1 $2').replace(/_/g, ' ')}</p>
                 {editing ? (
                   <input
                     value={toDisplayValue(f.value)}
@@ -274,6 +282,7 @@ function DocumentCard({
           </>
         )}
       </div>
+      </>)}
     </div>
   );
 }
@@ -528,13 +537,15 @@ function DetailModal({
                 return docs.map(doc => (
                   <DocumentCard
                     key={doc.id}
-                    doc={doc}
+                    doc={docs.length > 1
+                      ? { ...docs[0], fields: docs.flatMap(d => d.fields || []).filter((f, i, arr) => arr.findIndex(x => x.key === f.key) === i), confidence: docs.reduce((s, d) => s + d.confidence, 0) / docs.length }
+                      : doc}
                     docType={docType}
                     hasWarning={hasWarning}
                     onEdit={onEditDoc}
                     onDelete={onDeleteDoc}
                   />
-                ));
+                )).slice(0, 1);
               })}
 
               {/* Add document */}
@@ -728,7 +739,14 @@ export function BulkResultStep({ jobId, onReset }: { jobId: string; onReset: () 
 
   const nasabahWithStatus = useMemo(() => {
     if (!data) return [];
-    return data.result.nasabah.map(n => ({ ...n, _status: getNasabahStatus(n, data.documents) }));
+    return data.result.nasabah.map(n => {
+      const nasabahDocs = data.documents.filter(d => d.nasabahId === n.id);
+      const documentCount = nasabahDocs.length;
+      const ktpPemohon = nasabahDocs.find(d => d.documentType === 'ktp');
+      const resolvedName = ktpPemohon?.fields?.find(f => f.key === 'nama')?.value || n.fullName;
+      const resolvedNik = ktpPemohon?.fields?.find(f => f.key === 'nik')?.value || n.nik;
+      return { ...n, fullName: resolvedName, nik: resolvedNik, documentCount, _status: getNasabahStatus(n, data.documents) };
+    });
   }, [data]);
 
   const filtered = useMemo(() => {
@@ -742,7 +760,7 @@ export function BulkResultStep({ jobId, onReset }: { jobId: string; onReset: () 
   if (loading) return <div className="text-center py-12 text-muted">Memuat hasil...</div>;
   if (!data) return <div className="text-center py-12 text-red-500">Gagal memuat hasil.</div>;
 
-  const verified = nasabahWithStatus.filter(n => n._status === 'Verified').length;
+  const verified = nasabahWithStatus.filter(n => n._status === 'Complete').length;
   const needReview = nasabahWithStatus.filter(n => n._status === 'Need Review').length;
   const incomplete = nasabahWithStatus.filter(n => n._status === 'Incomplete').length;
 
@@ -757,6 +775,9 @@ export function BulkResultStep({ jobId, onReset }: { jobId: string; onReset: () 
           <h1 className="mt-3 text-2xl font-bold">Hasil Pemrosesan Dokumen</h1>
           <p className="mt-1 text-sm text-muted">
             {data.result.totalNasabah} nasabah • {data.result.totalDocuments} dokumen • {data.result.totalPages} halaman
+            {data.result.unidentifiedDocuments > 0 && (
+              <span className="text-amber-600"> • {data.result.unidentifiedDocuments} belum teridentifikasi</span>
+            )}
           </p>
         </div>
         <div className="flex gap-3">
@@ -772,7 +793,7 @@ export function BulkResultStep({ jobId, onReset }: { jobId: string; onReset: () 
       {/* Stats */}
       <div className="grid gap-4 md:grid-cols-4">
         <StatCard icon={UserRound} label="Total Nasabah" value={data.result.totalNasabah} helper="teridentifikasi otomatis" />
-        <StatCard icon={CheckCircle2} label="Verified" value={verified} helper="dokumen lengkap" />
+        <StatCard icon={CheckCircle2} label="Complete" value={verified} helper="dokumen lengkap" />
         <StatCard icon={AlertTriangle} label="Need Review" value={needReview} helper="perlu pengecekan" />
         <StatCard icon={XCircle} label="Incomplete" value={incomplete} helper="dokumen kurang" />
       </div>
@@ -786,7 +807,7 @@ export function BulkResultStep({ jobId, onReset }: { jobId: string; onReset: () 
           </div>
           <div className="flex items-center gap-2">
             <Filter className="h-4 w-4 text-muted hidden sm:block" />
-            {(['All', 'Verified', 'Need Review', 'Incomplete'] as const).map(item => (
+            {(['All', 'Complete', 'Need Review', 'Incomplete'] as const).map(item => (
               <button
                 key={item}
                 onClick={() => setStatusFilter(item)}
