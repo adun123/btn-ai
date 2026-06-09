@@ -24,7 +24,32 @@ const { evaluateAllNasabahRules } = require('./rule-evaluation.service');
 const { classifyAndExtractWithAI } = require('./ai-classification.service');
 
 const DEFAULT_BATCH_SIZE = 20;
-const OCR_CONCURRENCY = 2;
+const OCR_CONCURRENCY = 5;
+
+/**
+ * Gemini OCR fallback: extract text from an image when PaddleOCR is unavailable.
+ */
+async function geminiOcrFallback(base64Data, mimeType) {
+  const { GoogleGenerativeAI } = require('@google/generative-ai');
+  const genAI = new GoogleGenerativeAI(process.env.GEMINI_API_KEY);
+  const model = genAI.getGenerativeModel({
+    model: process.env.GEMINI_MODEL || 'gemini-2.5-flash',
+    generationConfig: { temperature: 0, responseMimeType: 'text/plain' },
+  });
+
+  const result = await model.generateContent({
+    contents: [{
+      role: 'user',
+      parts: [
+        { text: 'Extract ALL visible text from this document image. Return only the raw text, preserve the layout as much as possible. Do not add any commentary.' },
+        { inlineData: { mimeType, data: base64Data } },
+      ],
+    }],
+  });
+
+  const text = (await result.response).text();
+  return { text, confidence: text.length > 20 ? 0.85 : 0.5 };
+}
 
 /**
  * AI-based classification: sends each page's OCR text to Gemini for classification + field extraction.
@@ -166,7 +191,23 @@ async function processJob(jobId, files, batchSize) {
   let processedCount = 0;
 
   async function handleProgress(result) {
-    // 1. Mark OCR done, start classifying
+    // 1. If PaddleOCR failed, try Gemini OCR as fallback
+    if (result.error && process.env.GEMINI_API_KEY) {
+      try {
+        const pageIdx = pageRecords.findIndex((p) => p.id === result.pageId);
+        if (pageIdx >= 0) {
+          const page = allPages[pageIdx];
+          const geminiResult = await geminiOcrFallback(page.base64Data, page.mimeType);
+          result.text = geminiResult.text;
+          result.confidence = geminiResult.confidence;
+          result.error = null;
+        }
+      } catch (e) {
+        console.error(`[Gemini OCR Fallback] Also failed for ${result.pageId}:`, e.message);
+      }
+    }
+
+    // 2. Save OCR result only — classification happens in batch later
     await repository.updatePage(result.pageId, {
       ...(result.error ? { status: 'failed' } : {}),
       ocrText: result.text || ' ',
@@ -174,52 +215,9 @@ async function processJob(jobId, files, batchSize) {
       ocrRaw: result.raw || null,
       error: result.error || null,
     });
-    
-    // 2. Classify if no error and has sufficient text
-    if (!result.error && result.text && result.text.trim().length > 10) {
-      const record = pageRecords.find((p) => p.id === result.pageId);
-      
-      let classifiedDocs;
-      if (process.env.GEMINI_API_KEY) {
-        const detected = await classifyAndExtractWithAI(result.text);
-        classifiedDocs = detected.map((doc) => ({
-          documentType: doc.documentType,
-          confidence: doc.confidence,
-          method: 'ai_gemini',
-          sourceFilename: record?.sourceFilename || '',
-          pageIds: [result.pageId],
-          extractedFields: doc.fields || {},
-        }));
-      } else {
-        classifiedDocs = classifyAndGroupPages([{
-          pageId: result.pageId,
-          ocrText: result.text,
-          sourceFilename: record?.sourceFilename || '',
-          pageNumber: record?.pageNumber || 0,
-        }]);
-      }
 
-      // Save documents to DB
-      const docRecords = classifiedDocs.map((doc) => ({
-        id: randomUUID(),
-        jobId,
-        documentType: doc.documentType,
-        confidence: doc.confidence,
-        sourceFilename: doc.sourceFilename,
-        pageIds: doc.pageIds,
-        extractedFields: doc.extractedFields || {},
-        classificationMethod: doc.method || doc.classificationMethod || 'rule_based',
-      }));
-
-      if (docRecords.length > 0) {
-        await repository.insertDocuments(docRecords);
-      }
-    }
-    
-    // 3. Mark page as entirely completed
+    // 3. Mark page completed and update progress
     await repository.updatePage(result.pageId, { status: result.error ? 'failed' : 'completed' });
-    
-    // 4. Update overall job progress
     processedCount += 1;
     await repository.updateJob(jobId, { processedPages: processedCount });
   }
@@ -234,7 +232,52 @@ async function processJob(jobId, files, batchSize) {
   // Process ALL pages seamlessly in a single global worker pool.
   // If one page gets stuck, the other worker will pick up ALL remaining pages.
   const flatResults = await processBatch(allImages, handleProgress);
-  
+
+  // ─── STAGE 4: Classification (batched for speed) ────────────────────────────
+  await repository.updateJob(jobId, { status: 'classifying' });
+
+  const pagesWithText = flatResults
+    .filter((r) => !r.error && r.text && r.text.trim().length > 10)
+    .map((r) => {
+      const record = pageRecords.find((p) => p.id === r.pageId);
+      return { pageId: r.pageId, ocrText: r.text, sourceFilename: record?.sourceFilename || '', pageNumber: record?.pageNumber || 0 };
+    })
+    .sort((a, b) => a.sourceFilename.localeCompare(b.sourceFilename) || a.pageNumber - b.pageNumber);
+
+  const AI_CLASSIFY_CONCURRENCY = 10;
+  let classifyIdx = 0;
+
+  async function classifyWorker() {
+    while (classifyIdx < pagesWithText.length) {
+      const i = classifyIdx++;
+      const page = pagesWithText[i];
+      try {
+        let classifiedDocs;
+        if (process.env.GEMINI_API_KEY) {
+          const detected = await classifyAndExtractWithAI(page.ocrText);
+          classifiedDocs = detected.map((doc) => ({
+            id: randomUUID(), jobId,
+            documentType: doc.documentType, confidence: doc.confidence,
+            sourceFilename: page.sourceFilename, pageIds: [page.pageId],
+            extractedFields: doc.fields || {}, classificationMethod: 'ai_gemini',
+          }));
+        } else {
+          classifiedDocs = classifyAndGroupPages([page]).map((doc) => ({
+            id: randomUUID(), jobId,
+            documentType: doc.documentType, confidence: doc.confidence,
+            sourceFilename: doc.sourceFilename, pageIds: doc.pageIds,
+            extractedFields: doc.extractedFields || {}, classificationMethod: 'rule_based',
+          }));
+        }
+        if (classifiedDocs.length > 0) await repository.insertDocuments(classifiedDocs);
+      } catch (e) {
+        console.error(`[Classify] Page ${page.pageId} failed:`, e.message);
+      }
+    }
+  }
+
+  await Promise.all(Array.from({ length: Math.min(AI_CLASSIFY_CONCURRENCY, pagesWithText.length) }, () => classifyWorker()));
+
   // All pages are processed and classified. Fetch all documents for Grouping.
   const savedDocs = await repository.getDocumentsByJob(jobId);
 
