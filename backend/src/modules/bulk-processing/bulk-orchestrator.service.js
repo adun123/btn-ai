@@ -112,20 +112,18 @@ async function createAndProcessJob(input) {
     },
   });
 
-  // Process synchronously (Vercel kills background work after response is sent)
-  try {
-    await processJob(jobId, files, batchSize);
-  } catch (error) {
+  // Process in background — Vercel Node.js runtime keeps the function alive
+  // while there are pending promises in the event loop.
+  processJob(jobId, files, batchSize).catch(async (error) => {
     console.error(`[BulkOCR] Job ${jobId} failed:`, error.message);
     await repository.updateJob(jobId, {
       status: 'failed',
       error: error.message || 'Unknown processing error',
       completedAt: new Date().toISOString(),
     }).catch(() => {});
-  }
+  });
 
-  const finalJob = await repository.findJobById(jobId);
-  return { jobId: finalJob.id, status: finalJob.status };
+  return { jobId: job.id, status: job.status };
 }
 
 /**
