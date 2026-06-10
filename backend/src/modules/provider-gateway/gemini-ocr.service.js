@@ -1,5 +1,6 @@
 const { GoogleGenerativeAI } = require('@google/generative-ai');
 const { createHttpError } = require('../../utils/httpError');
+const { splitPdfPages } = require('../../utils/pdf-splitter');
 
 const DEFAULT_MODEL = process.env.GEMINI_MODEL || 'gemini-2.5-flash';
 
@@ -130,8 +131,7 @@ function normalizeGeminiPayload(parsed, fallbackType) {
   };
 }
 
-async function extractDocument({ documentType, mimeType, base64Data }) {
-  const model = getModel();
+async function callGemini(model, documentType, mimeType, base64Data) {
   let result;
 
   for (let attempt = 1; attempt <= 3; attempt += 1) {
@@ -180,6 +180,60 @@ async function extractDocument({ documentType, mimeType, base64Data }) {
   }
 
   return normalizeGeminiPayload(parsed, documentType);
+}
+
+function mergePageResults(pages, documentType) {
+  // Merge fields from all pages, deduplicate by key (keep highest confidence)
+  const fieldMap = new Map();
+  const warnings = [];
+  let totalConfidence = 0;
+
+  for (const page of pages) {
+    totalConfidence += page.confidence;
+    warnings.push(...page.warnings);
+    for (const field of page.fields) {
+      const existing = fieldMap.get(field.key);
+      if (!existing || (field.value && field.confidence > existing.confidence)) {
+        fieldMap.set(field.key, field);
+      }
+    }
+  }
+
+  return {
+    documentType,
+    confidence: pages.length > 0 ? totalConfidence / pages.length : 0,
+    summary: `OCR extraction completed (${pages.length} page${pages.length > 1 ? 's' : ''}).`,
+    fields: Array.from(fieldMap.values()),
+    warnings: [...new Set(warnings)],
+  };
+}
+
+async function extractDocument({ documentType, mimeType, base64Data }) {
+  const model = getModel();
+
+  // For multi-page PDFs, split and OCR per page to avoid memory/timeout issues
+  if (mimeType === 'application/pdf') {
+    const pdfBuffer = Buffer.from(base64Data, 'base64');
+    const pages = await splitPdfPages(pdfBuffer);
+
+    if (pages.length === 1) {
+      // Single page PDF — send directly
+      return callGemini(model, documentType, mimeType, base64Data);
+    }
+
+    // Multi-page: OCR each page sequentially to control memory
+    const pageResults = [];
+    for (const page of pages) {
+      const pageBase64 = page.buffer.toString('base64');
+      const result = await callGemini(model, documentType, mimeType, pageBase64);
+      pageResults.push(result);
+    }
+
+    return mergePageResults(pageResults, documentType);
+  }
+
+  // Non-PDF (images): send directly
+  return callGemini(model, documentType, mimeType, base64Data);
 }
 
 module.exports = {

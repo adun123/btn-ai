@@ -179,17 +179,20 @@ async function startExtraction(caseId, body = {}) {
   // Create processing job
   const job = await processingService.createProcessingJob(caseId);
 
-  // Process extraction asynchronously (don't await)
-  // Use setImmediate to ensure this runs in the next event loop tick
-  setImmediate(() => processExtractionAsync(caseId, job.id).catch((err) => {
-    console.error('Extraction async error:', err);
-  }));
+  // Process extraction synchronously (Vercel kills background work after response)
+  await processExtractionAsync(caseId, job.id);
 
-  // Return job ID immediately
+  // Return completed job
+  const finalJob = await processingService.getJobStatus(job.id);
+  if (finalJob.status === 'failed') {
+    throw createHttpError(502, finalJob.error || 'Extraction failed');
+  }
+
   return {
     jobId: job.id,
-    status: 'pending',
-    message: 'Extraction job started. Poll /jobs/:jobId/status for updates.',
+    status: finalJob.status,
+    extraction: finalJob.result?.extraction,
+    case: finalJob.result?.case,
   };
 }
 
